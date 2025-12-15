@@ -1,3 +1,104 @@
-<h1 style="font-size:200px;">Contador de Babaquinha</h1>
-<br>
-<p style="font-size:100px;">Gabriel foi babaquinha: 5 vezes</p>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contador de Babaquinha</title>
+</head>
+<body>
+    <main>
+        <h1 style="font-size:200px;">Contador de Babaquinha</h1>
+        <p style="font-size:100px;" id="contador" role="status" aria-live="polite">Gabriel foi babaquinha: <span id="count">0</span> vezes</p>
+        <button id="addBtn" style="font-size:50px; padding:20px 40px; cursor:pointer;">Adicionar +1</button>
+        <p id="limitMsg" style="font-size:30px; color:#666;" role="alert" aria-live="assertive"></p>
+    </main>
+
+    <script>
+        const API_URL = '/api/count';
+        
+        // Verifica quantas vezes o usuário já adicionou hoje
+        function checkDailyLimit() {
+            const today = new Date().toDateString();
+            const data = localStorage.getItem('babaquinha_limit');
+            
+            if (!data) {
+                return { count: 0, date: today };
+            }
+            
+            const parsed = JSON.parse(data);
+            
+            // Se é um novo dia, reseta o contador
+            if (parsed.date !== today) {
+                return { count: 0, date: today };
+            }
+            
+            return parsed;
+        }
+        
+        function updateDailyLimit(count) {
+            const today = new Date().toDateString();
+            localStorage.setItem('babaquinha_limit', JSON.stringify({
+                count: count,
+                date: today
+            }));
+        }
+        
+        async function loadCount() {
+            try {
+                const response = await fetch(API_URL);
+                const data = await response.json();
+                document.getElementById('count').textContent = data.count || 0;
+            } catch (error) {
+                console.error('Erro ao carregar contador:', error);
+            }
+        }
+        
+        async function incrementCount() {
+            const limit = checkDailyLimit();
+            
+            if (limit.count >= 2) {
+                document.getElementById('limitMsg').textContent = 'Você já adicionou 2 vezes hoje. Volte amanhã!';
+                return;
+            }
+            
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('count').textContent = data.count;
+                    
+                    const newLimit = limit.count + 1;
+                    updateDailyLimit(newLimit);
+                    
+                    const remaining = 2 - newLimit;
+                    if (remaining > 0) {
+                        document.getElementById('limitMsg').textContent = `Você pode adicionar mais ${remaining} vez(es) hoje.`;
+                    } else {
+                        document.getElementById('limitMsg').textContent = 'Você já adicionou 2 vezes hoje. Volte amanhã!';
+                    }
+                }
+            } catch (error) {
+                console.error('Erro ao incrementar contador:', error);
+                document.getElementById('limitMsg').textContent = 'Erro ao adicionar. Tente novamente.';
+            }
+        }
+        
+        document.getElementById('addBtn').addEventListener('click', incrementCount);
+        
+        // Carrega o contador inicial
+        loadCount();
+        
+        // Mostra quantas vezes o usuário pode adicionar hoje
+        const limit = checkDailyLimit();
+        const remaining = 2 - limit.count;
+        if (remaining > 0) {
+            document.getElementById('limitMsg').textContent = `Você pode adicionar ${remaining} vez(es) hoje.`;
+        } else {
+            document.getElementById('limitMsg').textContent = 'Você já adicionou 2 vezes hoje. Volte amanhã!';
+        }
+    </script>
+</body>
+</html>
