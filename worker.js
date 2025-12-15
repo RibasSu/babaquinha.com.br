@@ -252,7 +252,7 @@ export default {
     try {
       const count = await env.babaquinha.get(KV_KEY);
       const html = getHtmlTemplate(parseInt(count) || 0);
-      
+
       return new Response(html, {
         headers: {
           "content-type": "text/html;charset=UTF-8",
