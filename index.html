@@ -80,7 +80,6 @@
         Gabriel foi babaquinha: <span id="count">0</span> vezes
       </p>
       <button id="addBtn">Adicionar +1</button>
-      <p id="limitMsg" role="alert" aria-live="assertive"></p>
     </main>
 
     <!-- VLibras -->
@@ -140,34 +139,30 @@
 
       async function incrementCount() {
         const limit = checkDailyLimit();
+        const countElement = document.getElementById("count");
+        const currentCount = parseInt(countElement.textContent);
 
-        if (limit.count >= 2) {
-          document.getElementById("limitMsg").textContent =
-            "Você já adicionou 2 vezes hoje. Volte amanhã!";
-          return;
-        }
+        // Sempre incrementa visualmente
+        countElement.textContent = currentCount + 1;
 
-        try {
-          const response = await fetch(API_URL, {
-            method: "POST",
-          });
+        // Só envia ao servidor se não atingiu o limite
+        if (limit.count < 2) {
+          try {
+            const response = await fetch(API_URL, {
+              method: "POST",
+            });
 
-          if (response.ok) {
-            const data = await response.json();
-            document.getElementById("count").textContent = data.count;
+            if (response.ok) {
+              const data = await response.json();
+              // Atualiza com o valor real do servidor
+              countElement.textContent = data.count;
 
-            const newLimit = limit.count + 1;
-            updateDailyLimit(newLimit);
-
-            if (newLimit >= 2) {
-              document.getElementById("limitMsg").textContent =
-                "Você já adicionou 2 vezes hoje. Volte amanhã!";
+              const newLimit = limit.count + 1;
+              updateDailyLimit(newLimit);
             }
+          } catch (error) {
+            console.error("Erro ao incrementar contador:", error);
           }
-        } catch (error) {
-          console.error("Erro ao incrementar contador:", error);
-          document.getElementById("limitMsg").textContent =
-            "Erro ao adicionar. Tente novamente.";
         }
       }
 
