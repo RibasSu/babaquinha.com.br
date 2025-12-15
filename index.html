@@ -4,31 +4,96 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Contador de Babaquinha</title>
+    <style>
+      :root {
+        --font-size: 1em;
+      }
+
+      body.large-text {
+        --font-size: 1.5em;
+      }
+
+      body.extra-large-text {
+        --font-size: 2em;
+      }
+
+      body {
+        font-size: var(--font-size);
+      }
+
+      body.high-contrast {
+        background: #000;
+        color: #fff;
+      }
+
+      body.high-contrast button {
+        background: #fff;
+        color: #000;
+        border: 2px solid #fff;
+      }
+
+      #accessibility-bar {
+        position: fixed;
+        top: 0;
+        right: 0;
+        background: #f0f0f0;
+        padding: 10px;
+        border-bottom-left-radius: 5px;
+        z-index: 1000;
+      }
+
+      #accessibility-bar button {
+        margin: 0 5px;
+        padding: 5px 10px;
+        cursor: pointer;
+      }
+    </style>
   </head>
   <body>
-    <main>
-      <h1 style="font-size: 200px">Contador de Babaquinha</h1>
-      <p
-        style="font-size: 100px"
-        id="contador"
-        role="status"
-        aria-live="polite"
+    <div id="accessibility-bar">
+      <button
+        id="increaseFont"
+        title="Aumentar fonte"
+        aria-label="Aumentar tamanho da fonte"
       >
+        A+
+      </button>
+      <button
+        id="decreaseFont"
+        title="Diminuir fonte"
+        aria-label="Diminuir tamanho da fonte"
+      >
+        A-
+      </button>
+      <button
+        id="toggleContrast"
+        title="Alto contraste"
+        aria-label="Alternar alto contraste"
+      >
+        Contraste
+      </button>
+    </div>
+
+    <main>
+      <h1>Contador de Babaquinha</h1>
+      <p id="contador" role="status" aria-live="polite">
         Gabriel foi babaquinha: <span id="count">0</span> vezes
       </p>
-      <button
-        id="addBtn"
-        style="font-size: 50px; padding: 20px 40px; cursor: pointer"
-      >
-        Adicionar +1
-      </button>
-      <p
-        id="limitMsg"
-        style="font-size: 30px; color: #666"
-        role="alert"
-        aria-live="assertive"
-      ></p>
+      <button id="addBtn">Adicionar +1</button>
+      <p id="limitMsg" role="alert" aria-live="assertive"></p>
     </main>
+
+    <!-- VLibras -->
+    <div vw class="enabled">
+      <div vw-access-button class="active"></div>
+      <div vw-plugin-wrapper>
+        <div class="vw-plugin-top-wrapper"></div>
+      </div>
+    </div>
+    <script src="https://vlibras.gov.br/app/vlibras-plugin.js"></script>
+    <script>
+      new window.VLibras.Widget("https://vlibras.gov.br/app");
+    </script>
 
     <script>
       const API_URL = "/api/count";
@@ -94,12 +159,7 @@
             const newLimit = limit.count + 1;
             updateDailyLimit(newLimit);
 
-            const remaining = 2 - newLimit;
-            if (remaining > 0) {
-              document.getElementById(
-                "limitMsg"
-              ).textContent = `Você pode adicionar mais ${remaining} vez(es) hoje.`;
-            } else {
+            if (newLimit >= 2) {
               document.getElementById("limitMsg").textContent =
                 "Você já adicionou 2 vezes hoje. Volte amanhã!";
             }
@@ -118,17 +178,33 @@
       // Carrega o contador inicial
       loadCount();
 
-      // Mostra quantas vezes o usuário pode adicionar hoje
-      const limit = checkDailyLimit();
-      const remaining = 2 - limit.count;
-      if (remaining > 0) {
-        document.getElementById(
-          "limitMsg"
-        ).textContent = `Você pode adicionar ${remaining} vez(es) hoje.`;
-      } else {
-        document.getElementById("limitMsg").textContent =
-          "Você já adicionou 2 vezes hoje. Volte amanhã!";
+      // Controles de acessibilidade
+      let fontLevel = 0; // 0 = normal, 1 = grande, 2 = extra grande
+
+      document.getElementById("increaseFont").addEventListener("click", () => {
+        fontLevel = Math.min(2, fontLevel + 1);
+        updateFontSize();
+      });
+
+      document.getElementById("decreaseFont").addEventListener("click", () => {
+        fontLevel = Math.max(0, fontLevel - 1);
+        updateFontSize();
+      });
+
+      function updateFontSize() {
+        document.body.classList.remove("large-text", "extra-large-text");
+        if (fontLevel === 1) {
+          document.body.classList.add("large-text");
+        } else if (fontLevel === 2) {
+          document.body.classList.add("extra-large-text");
+        }
       }
+
+      document
+        .getElementById("toggleContrast")
+        .addEventListener("click", () => {
+          document.body.classList.toggle("high-contrast");
+        });
     </script>
   </body>
 </html>
