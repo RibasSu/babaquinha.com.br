@@ -1,0 +1,19 @@
+{
+  "name": "babaquinha",
+  "version": "1.0.0",
+  "description": "Contador de Babaquinha - Deployable on Cloudflare Workers",
+  "main": "worker.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "keywords": [
+    "cloudflare",
+    "workers"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
