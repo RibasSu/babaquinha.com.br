@@ -1,0 +1,12 @@
+name = "babaquinha"
+main = "worker.js"
+compatibility_date = "2024-12-15"
+
+# Account ID can be found in Cloudflare dashboard
+# account_id = "your-account-id"
+
+# Workers configuration
+workers_dev = true
+
+[env.production]
+name = "babaquinha-production"
