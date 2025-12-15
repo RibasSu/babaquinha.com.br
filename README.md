@@ -27,6 +27,7 @@ The Babaquinha Counter is a serverless web application built on Cloudflare Worke
 
 - Runtime Environment: Cloudflare Workers (V8 isolate-based)
 - Storage Backend: Cloudflare KV (Key-Value store)
+- Package Manager: Bun (JavaScript runtime and package manager)
 - Frontend: Vanilla JavaScript with Web Standards APIs
 - Deployment: Wrangler CLI version 3.114.15
 - Configuration: TOML-based (wrangler.toml)
@@ -123,6 +124,7 @@ This endpoint retrieves the current counter value from the KV store. The impleme
 5. Implements error handling for KV failures
 
 The response format is:
+
 ```json
 {
   "count": <integer>
@@ -260,6 +262,7 @@ The application implements a sophisticated client-side rate limiting mechanism u
 #### Rate Limit State
 
 The stored object contains:
+
 ```javascript
 {
   count: <number>,  // Number of increments today
@@ -290,7 +293,7 @@ A key security feature is the decoupling of visual increments from server update
 
 ### CORS Configuration
 
-The API endpoints include Access-Control-Allow-Origin: * headers, permitting cross-origin requests from any domain. For production deployments requiring stricter security, this should be modified to whitelist specific origins.
+The API endpoints include Access-Control-Allow-Origin: \* headers, permitting cross-origin requests from any domain. For production deployments requiring stricter security, this should be modified to whitelist specific origins.
 
 ### Input Validation
 
@@ -319,14 +322,17 @@ The application targets WCAG 2.1 Level AA compliance through multiple accessibil
 The implementation uses ARIA attributes to enhance screen reader compatibility:
 
 1. role="status" on counter paragraph
+
    - Indicates dynamically updating content
    - Non-intrusive announcements to screen readers
 
 2. aria-live="polite" on counter
+
    - Screen readers announce changes when idle
    - Prevents interruption of current announcements
 
 3. aria-label on accessibility buttons
+
    - Provides descriptive labels for icon buttons
    - Supplements visual-only indicators
 
@@ -387,10 +393,12 @@ VLibras integration provides real-time translation to Brazilian Sign Language, a
 By rendering the counter value server-side, the application achieves:
 
 1. Faster First Contentful Paint (FCP)
+
    - Content visible without client-side API call
    - Reduces perceived load time
 
 2. Reduced JavaScript Execution
+
    - No initial fetch() call required
    - Lower CPU usage on client devices
 
@@ -403,10 +411,12 @@ By rendering the counter value server-side, the application achieves:
 Cloudflare Workers execute at edge locations near users, providing:
 
 1. Low Latency
+
    - Typical response times: 10-50ms
    - Eliminates round-trip to origin server
 
 2. High Availability
+
    - Automatic failover between data centers
    - No single point of failure
 
@@ -419,11 +429,13 @@ Cloudflare Workers execute at edge locations near users, providing:
 The application minimizes resource usage through:
 
 1. No External Dependencies
+
    - VLibras loaded asynchronously
    - No JavaScript framework overhead
    - Minimal CSS payload
 
 2. Efficient DOM Manipulation
+
    - Direct element reference (getElementById)
    - Minimal reflows and repaints
    - Event delegation not required (few elements)
@@ -443,21 +455,53 @@ The HTML response does not include Cache-Control headers, ensuring users always 
 
 ## Deployment Pipeline
 
+### Package Manager: Bun
+
+The project uses Bun as the package manager and JavaScript runtime for development tasks. Bun provides several advantages over traditional package managers:
+
+1. Performance
+
+   - Significantly faster package installation (up to 30x faster than npm)
+   - Native TypeScript and JSX support without configuration
+   - Fast module resolution and bundling
+
+2. Compatibility
+
+   - Drop-in replacement for npm, yarn, and pnpm
+   - Uses package.json standard format
+   - Compatible with npm registry
+
+3. Developer Experience
+
+   - Single binary for runtime and package manager
+   - Built-in test runner and bundler
+   - Watch mode for development
+
+4. Commands
+   - `bun install` - Install dependencies from package.json
+   - `bun run <script>` - Execute package.json scripts
+   - `bunx <package>` - Execute packages without installation (like npx)
+   - `bun add <package>` - Add new dependency
+   - `bun remove <package>` - Remove dependency
+
 ### Development Workflow
 
 1. Local Development
-   - Run `npx wrangler dev` for local testing
-   - Worker executes in local Node.js environment
+
+   - Run `bun run dev` or `bunx wrangler dev` for local testing
+   - Worker executes in local Bun runtime environment
    - KV operations simulated locally
+   - Bun provides faster startup times than Node.js
 
 2. Testing
+
    - Manual testing in development environment
    - Verify counter increments correctly
    - Test rate limiting behavior
    - Validate accessibility features
 
 3. Deployment
-   - Run `npx wrangler deploy` for production
+   - Run `bun run deploy` or `bunx wrangler deploy` for production
    - Worker code uploaded to Cloudflare
    - Automatic propagation to edge locations
    - Zero-downtime deployment
@@ -520,16 +564,19 @@ persist = true
 Cloudflare automatically collects performance metrics:
 
 1. Request Count
+
    - Total requests per time period
    - Breakdown by status code
    - Geographic distribution
 
 2. Response Time
+
    - P50, P75, P95, P99 percentiles
    - Per-endpoint breakdown
    - Trend analysis
 
 3. Error Rate
+
    - 4xx and 5xx response rates
    - Error type categorization
    - Alert threshold configuration
@@ -544,6 +591,7 @@ Cloudflare automatically collects performance metrics:
 KV operations generate separate metrics:
 
 1. Read Operations
+
    - Request count and latency
    - Cache hit rate
    - Error rate
@@ -598,8 +646,9 @@ Status Code: 200 OK
 ```
 
 Response Headers:
+
 - Content-Type: application/json
-- Access-Control-Allow-Origin: *
+- Access-Control-Allow-Origin: \*
 
 #### Error Response
 
@@ -635,8 +684,9 @@ Status Code: 200 OK
 ```
 
 Response Headers:
+
 - Content-Type: application/json
-- Access-Control-Allow-Origin: *
+- Access-Control-Allow-Origin: \*
 
 #### Error Response
 
@@ -663,6 +713,7 @@ The application uses localStorage for persistent client-side state:
 Stores rate limiting information.
 
 Value Structure:
+
 ```json
 {
   "count": 2,
@@ -671,6 +722,7 @@ Value Structure:
 ```
 
 Fields:
+
 - count: Number of POST requests made today (0-2)
 - date: String representation of current date
 - Automatically resets when date changes
@@ -680,6 +732,7 @@ Fields:
 The client maintains two separate state values:
 
 1. Displayed Counter
+
    - Increments on every button click
    - Stored only in DOM (not persisted)
    - May diverge from server value after rate limit
@@ -747,18 +800,22 @@ VLibras script failures do not impact core functionality as it loads asynchronou
 The application relies on modern JavaScript APIs with broad browser support:
 
 1. Fetch API
+
    - Supported: All modern browsers
    - Fallback: None required for target audience
 
 2. Async/Await
+
    - Supported: All modern browsers
    - Transpilation: Not required
 
 3. Template Literals
+
    - Supported: All modern browsers
    - Fallback: Use string concatenation if needed
 
 4. Arrow Functions
+
    - Supported: All modern browsers
    - Transpilation: Not required for target browsers
 
@@ -769,10 +826,12 @@ The application relies on modern JavaScript APIs with broad browser support:
 ### CSS Features Used
 
 1. CSS Custom Properties (Variables)
+
    - Supported: All modern browsers
    - Fallback: Define static styles for older browsers
 
 2. Flexbox
+
    - Not currently used but recommended for layout
    - Supported: All modern browsers
 
@@ -816,11 +875,13 @@ Under high concurrent load, the read-modify-write pattern for counter increments
 Cloudflare Workers auto-scale to handle traffic spikes:
 
 1. Horizontal Scaling
+
    - Workers automatically spawn across edge locations
    - No manual scaling configuration required
    - Linear cost scaling with request volume
 
 2. Request Limits
+
    - CPU time: 50ms per request (can be increased)
    - Memory: 128MB per request
    - Concurrent requests: Effectively unlimited
@@ -835,6 +896,7 @@ Cloudflare Workers auto-scale to handle traffic spikes:
 Cloudflare Workers pricing considerations:
 
 1. Free Tier
+
    - 100,000 requests per day
    - Sufficient for small to medium traffic
 
@@ -850,6 +912,7 @@ Cloudflare Workers pricing considerations:
 The edge computing model provides optimal performance globally:
 
 1. Data Center Coverage
+
    - 200+ cities worldwide
    - Sub-50ms latency for most users
    - Automatic routing to nearest location
