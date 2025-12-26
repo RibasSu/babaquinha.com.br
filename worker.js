@@ -2,9 +2,10 @@
  * Cloudflare Worker to serve the Babaquinha counter page
  */
 
-const KV_KEY = "babaquinha_count";
+const KV_KEY_PREFIX = "person_";
+const KV_PEOPLE_LIST = "people_list";
 
-function getHtmlTemplate(count) {
+function getHtmlTemplate(people) {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
   <head>
@@ -54,6 +55,44 @@ function getHtmlTemplate(count) {
         padding: 5px 10px;
         cursor: pointer;
       }
+
+      .person-card {
+        border: 1px solid #ccc;
+        padding: 15px;
+        margin: 10px 0;
+        border-radius: 5px;
+      }
+
+      .person-card h2 {
+        margin-top: 0;
+      }
+
+      .add-person-form {
+        margin: 20px 0;
+        padding: 15px;
+        border: 2px dashed #ccc;
+        border-radius: 5px;
+      }
+
+      .add-person-form input {
+        padding: 8px;
+        margin: 5px;
+        font-size: 1em;
+      }
+
+      .add-person-form button {
+        padding: 8px 16px;
+        margin: 5px;
+        cursor: pointer;
+      }
+
+      body.high-contrast .person-card {
+        border-color: #fff;
+      }
+
+      body.high-contrast .add-person-form {
+        border-color: #fff;
+      }
     </style>
   </head>
   <body>
@@ -83,10 +122,28 @@ function getHtmlTemplate(count) {
 
     <main>
       <h1>Contador de Babaquinha</h1>
-      <p id="contador" role="status" aria-live="polite">
-        Gabriel foi babaquinha: <span id="count">${count}</span> vezes
-      </p>
-      <button id="addBtn">Adicionar +1</button>
+      
+      <div class="add-person-form">
+        <h2>Adicionar Nova Pessoa</h2>
+        <input type="text" id="newPersonName" placeholder="Nome da pessoa" />
+        <button id="addPersonBtn">Adicionar Pessoa</button>
+      </div>
+
+      <div id="peopleList">
+        ${people
+          .map(
+            (person) => `
+          <div class="person-card">
+            <h2>${person.name}</h2>
+            <p role="status" aria-live="polite">
+              Foi babaquinha: <span class="count" data-person="${person.id}">${person.count}</span> vezes
+            </p>
+            <button class="addBtn" data-person="${person.id}">Adicionar +1</button>
+          </div>
+        `
+          )
+          .join("")}
+      </div>
     </main>
 
     <!-- VLibras -->
@@ -102,12 +159,13 @@ function getHtmlTemplate(count) {
     </script>
 
     <script>
-      const API_URL = "/api/count";
+      const API_URL = "/api";
 
-      // Verifica quantas vezes o usuário já adicionou hoje
-      function checkDailyLimit() {
+      // Verifica quantas vezes o usuário já adicionou hoje para uma pessoa específica
+      function checkDailyLimit(personId) {
         const today = new Date().toDateString();
-        const data = localStorage.getItem("babaquinha_limit");
+        const key = \`babaquinha_limit_\${personId}\`;
+        const data = localStorage.getItem(key);
 
         if (!data) {
           return { count: 0, date: today };
@@ -123,10 +181,11 @@ function getHtmlTemplate(count) {
         return parsed;
       }
 
-      function updateDailyLimit(count) {
+      function updateDailyLimit(personId, count) {
         const today = new Date().toDateString();
+        const key = \`babaquinha_limit_\${personId}\`;
         localStorage.setItem(
-          "babaquinha_limit",
+          key,
           JSON.stringify({
             count: count,
             date: today,
@@ -134,9 +193,9 @@ function getHtmlTemplate(count) {
         );
       }
 
-      async function incrementCount() {
-        const limit = checkDailyLimit();
-        const countElement = document.getElementById("count");
+      async function incrementCount(personId) {
+        const limit = checkDailyLimit(personId);
+        const countElement = document.querySelector(\`.count[data-person="\${personId}"]\`);
         const currentCount = parseInt(countElement.textContent);
 
         // Sempre incrementa visualmente
@@ -145,7 +204,7 @@ function getHtmlTemplate(count) {
         // Só envia ao servidor se não atingiu o limite
         if (limit.count < 2) {
           try {
-            const response = await fetch(API_URL, {
+            const response = await fetch(\`\${API_URL}/person/\${personId}/increment\`, {
               method: "POST",
             });
 
@@ -155,7 +214,7 @@ function getHtmlTemplate(count) {
               countElement.textContent = data.count;
 
               const newLimit = limit.count + 1;
-              updateDailyLimit(newLimit);
+              updateDailyLimit(personId, newLimit);
             }
           } catch (error) {
             console.error("Erro ao incrementar contador:", error);
@@ -163,9 +222,53 @@ function getHtmlTemplate(count) {
         }
       }
 
-      document
-        .getElementById("addBtn")
-        .addEventListener("click", incrementCount);
+      async function addPerson() {
+        const nameInput = document.getElementById("newPersonName");
+        const name = nameInput.value.trim();
+
+        if (!name) {
+          alert("Por favor, insira um nome.");
+          return;
+        }
+
+        try {
+          const response = await fetch(\`\${API_URL}/person\`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ name }),
+          });
+
+          if (response.ok) {
+            // Recarrega a página para mostrar a nova pessoa
+            window.location.reload();
+          } else {
+            alert("Erro ao adicionar pessoa.");
+          }
+        } catch (error) {
+          console.error("Erro ao adicionar pessoa:", error);
+          alert("Erro ao adicionar pessoa.");
+        }
+      }
+
+      // Event listeners para botões de incremento
+      document.querySelectorAll(".addBtn").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          const personId = e.target.dataset.person;
+          incrementCount(personId);
+        });
+      });
+
+      // Event listener para adicionar pessoa
+      document.getElementById("addPersonBtn").addEventListener("click", addPerson);
+
+      // Permite adicionar pessoa com Enter
+      document.getElementById("newPersonName").addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          addPerson();
+        }
+      });
 
       // Controles de acessibilidade
       let fontLevel = 0; // 0 = normal, 1 = grande, 2 = extra grande
@@ -203,11 +306,13 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // API endpoint para obter o contador
-    if (url.pathname === "/api/count" && request.method === "GET") {
+    // API endpoint para obter todas as pessoas
+    if (url.pathname === "/api/people" && request.method === "GET") {
       try {
-        const count = await env.babaquinha.get(KV_KEY);
-        return new Response(JSON.stringify({ count: parseInt(count) || 0 }), {
+        const peopleListJson = await env.babaquinha.get(KV_PEOPLE_LIST);
+        const peopleList = peopleListJson ? JSON.parse(peopleListJson) : [];
+
+        return new Response(JSON.stringify(peopleList), {
           headers: {
             "content-type": "application/json",
             "Access-Control-Allow-Origin": "*",
@@ -215,7 +320,7 @@ export default {
         });
       } catch (error) {
         return new Response(
-          JSON.stringify({ error: "Erro ao buscar contador" }),
+          JSON.stringify({ error: "Erro ao buscar pessoas" }),
           {
             status: 500,
             headers: { "content-type": "application/json" },
@@ -224,12 +329,77 @@ export default {
       }
     }
 
-    // API endpoint para incrementar o contador
-    if (url.pathname === "/api/count" && request.method === "POST") {
+    // API endpoint para adicionar nova pessoa
+    if (url.pathname === "/api/person" && request.method === "POST") {
       try {
-        const currentCount = await env.babaquinha.get(KV_KEY);
+        const { name } = await request.json();
+
+        if (!name || name.trim() === "") {
+          return new Response(JSON.stringify({ error: "Nome é obrigatório" }), {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          });
+        }
+
+        // Gera ID único baseado no nome e timestamp
+        const personId =
+          name.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now();
+
+        // Obtém lista atual de pessoas
+        const peopleListJson = await env.babaquinha.get(KV_PEOPLE_LIST);
+        const peopleList = peopleListJson ? JSON.parse(peopleListJson) : [];
+
+        // Adiciona nova pessoa
+        peopleList.push({ id: personId, name: name.trim(), count: 0 });
+
+        // Salva lista atualizada
+        await env.babaquinha.put(KV_PEOPLE_LIST, JSON.stringify(peopleList));
+
+        // Inicializa contador da pessoa
+        await env.babaquinha.put(KV_KEY_PREFIX + personId, "0");
+
+        return new Response(
+          JSON.stringify({ id: personId, name: name.trim(), count: 0 }),
+          {
+            headers: {
+              "content-type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            },
+          }
+        );
+      } catch (error) {
+        return new Response(
+          JSON.stringify({ error: "Erro ao adicionar pessoa" }),
+          {
+            status: 500,
+            headers: { "content-type": "application/json" },
+          }
+        );
+      }
+    }
+
+    // API endpoint para incrementar contador de uma pessoa
+    if (
+      url.pathname.match(/^\/api\/person\/[^\/]+\/increment$/) &&
+      request.method === "POST"
+    ) {
+      try {
+        const personId = url.pathname.split("/")[3];
+        const key = KV_KEY_PREFIX + personId;
+
+        const currentCount = await env.babaquinha.get(key);
         const newCount = (parseInt(currentCount) || 0) + 1;
-        await env.babaquinha.put(KV_KEY, newCount.toString());
+        await env.babaquinha.put(key, newCount.toString());
+
+        // Atualiza também na lista de pessoas
+        const peopleListJson = await env.babaquinha.get(KV_PEOPLE_LIST);
+        const peopleList = peopleListJson ? JSON.parse(peopleListJson) : [];
+        const personIndex = peopleList.findIndex((p) => p.id === personId);
+
+        if (personIndex !== -1) {
+          peopleList[personIndex].count = newCount;
+          await env.babaquinha.put(KV_PEOPLE_LIST, JSON.stringify(peopleList));
+        }
 
         return new Response(JSON.stringify({ count: newCount }), {
           headers: {
@@ -248,10 +418,25 @@ export default {
       }
     }
 
-    // Serve a página principal com o contador já renderizado
+    // Serve a página principal com todos os contadores
     try {
-      const count = await env.babaquinha.get(KV_KEY);
-      const html = getHtmlTemplate(parseInt(count) || 0);
+      const peopleListJson = await env.babaquinha.get(KV_PEOPLE_LIST);
+      let peopleList = peopleListJson ? JSON.parse(peopleListJson) : [];
+
+      // Se não houver ninguém, adiciona Gabriel como padrão
+      if (peopleList.length === 0) {
+        peopleList = [{ id: "gabriel", name: "Gabriel", count: 0 }];
+        await env.babaquinha.put(KV_PEOPLE_LIST, JSON.stringify(peopleList));
+        await env.babaquinha.put(KV_KEY_PREFIX + "gabriel", "0");
+      }
+
+      // Busca contadores atualizados para cada pessoa
+      for (let person of peopleList) {
+        const count = await env.babaquinha.get(KV_KEY_PREFIX + person.id);
+        person.count = parseInt(count) || 0;
+      }
+
+      const html = getHtmlTemplate(peopleList);
 
       return new Response(html, {
         headers: {
@@ -259,7 +444,9 @@ export default {
         },
       });
     } catch (error) {
-      const html = getHtmlTemplate(0);
+      const html = getHtmlTemplate([
+        { id: "gabriel", name: "Gabriel", count: 0 },
+      ]);
       return new Response(html, {
         headers: {
           "content-type": "text/html;charset=UTF-8",
