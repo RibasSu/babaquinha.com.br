@@ -474,12 +474,6 @@ export default {
     try {
       let peopleList = await getPeopleList(env);
 
-      // Se não houver ninguém, adiciona Gabriel como padrão
-      if (peopleList.length === 0) {
-        peopleList = [{ id: "gabriel", name: "Gabriel", count: 0 }];
-        await savePeopleList(env, peopleList);
-      }
-
       // Limpa chaves antigas em background (não bloqueia resposta)
       ctx.waitUntil(cleanupOldKeys(env, peopleList));
 
