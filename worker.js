@@ -2,8 +2,43 @@
  * Cloudflare Worker to serve the Babaquinha counter page
  */
 
-const KV_KEY_PREFIX = "person_";
 const KV_PEOPLE_LIST = "people_list";
+
+/**
+ * Busca a lista de pessoas do KV
+ */
+async function getPeopleList(env) {
+  const peopleListJson = await env.babaquinha.get(KV_PEOPLE_LIST);
+  return peopleListJson ? JSON.parse(peopleListJson) : [];
+}
+
+/**
+ * Salva a lista de pessoas no KV
+ */
+async function savePeopleList(env, peopleList) {
+  await env.babaquinha.put(KV_PEOPLE_LIST, JSON.stringify(peopleList));
+}
+
+/**
+ * Limpa chaves antigas/duplicadas do KV (person_* individuais)
+ */
+async function cleanupOldKeys(env, peopleList) {
+  // Remove chaves individuais antigas que não são mais necessárias
+  for (const person of peopleList) {
+    try {
+      await env.babaquinha.delete(`person_${person.id}`);
+    } catch (error) {
+      console.error(`Erro ao limpar chave person_${person.id}:`, error);
+    }
+  }
+
+  // Remove contador legado
+  try {
+    await env.babaquinha.delete("babaquinha_count");
+  } catch (error) {
+    console.error("Erro ao limpar chave legada:", error);
+  }
+}
 
 function getHtmlTemplate(people) {
   return `<!DOCTYPE html>
@@ -309,8 +344,7 @@ export default {
     // API endpoint para obter todas as pessoas
     if (url.pathname === "/api/people" && request.method === "GET") {
       try {
-        const peopleListJson = await env.babaquinha.get(KV_PEOPLE_LIST);
-        const peopleList = peopleListJson ? JSON.parse(peopleListJson) : [];
+        const peopleList = await getPeopleList(env);
 
         return new Response(JSON.stringify(peopleList), {
           headers: {
@@ -346,27 +380,36 @@ export default {
           name.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now();
 
         // Obtém lista atual de pessoas
-        const peopleListJson = await env.babaquinha.get(KV_PEOPLE_LIST);
-        const peopleList = peopleListJson ? JSON.parse(peopleListJson) : [];
+        const peopleList = await getPeopleList(env);
+
+        // Verifica se já existe pessoa com mesmo nome
+        const existingPerson = peopleList.find(
+          (p) => p.name.toLowerCase() === name.trim().toLowerCase()
+        );
+
+        if (existingPerson) {
+          return new Response(
+            JSON.stringify({ error: "Pessoa com este nome já existe" }),
+            {
+              status: 400,
+              headers: { "content-type": "application/json" },
+            }
+          );
+        }
 
         // Adiciona nova pessoa
-        peopleList.push({ id: personId, name: name.trim(), count: 0 });
+        const newPerson = { id: personId, name: name.trim(), count: 0 };
+        peopleList.push(newPerson);
 
-        // Salva lista atualizada
-        await env.babaquinha.put(KV_PEOPLE_LIST, JSON.stringify(peopleList));
+        // Salva lista atualizada (única fonte de verdade)
+        await savePeopleList(env, peopleList);
 
-        // Inicializa contador da pessoa
-        await env.babaquinha.put(KV_KEY_PREFIX + personId, "0");
-
-        return new Response(
-          JSON.stringify({ id: personId, name: name.trim(), count: 0 }),
-          {
-            headers: {
-              "content-type": "application/json",
-              "Access-Control-Allow-Origin": "*",
-            },
-          }
-        );
+        return new Response(JSON.stringify(newPerson), {
+          headers: {
+            "content-type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
       } catch (error) {
         return new Response(
           JSON.stringify({ error: "Erro ao adicionar pessoa" }),
@@ -385,21 +428,30 @@ export default {
     ) {
       try {
         const personId = url.pathname.split("/")[3];
-        const key = KV_KEY_PREFIX + personId;
 
-        const currentCount = await env.babaquinha.get(key);
-        const newCount = (parseInt(currentCount) || 0) + 1;
-        await env.babaquinha.put(key, newCount.toString());
+        // Obtém lista atual
+        const peopleList = await getPeopleList(env);
 
-        // Atualiza também na lista de pessoas
-        const peopleListJson = await env.babaquinha.get(KV_PEOPLE_LIST);
-        const peopleList = peopleListJson ? JSON.parse(peopleListJson) : [];
+        // Encontra a pessoa
         const personIndex = peopleList.findIndex((p) => p.id === personId);
 
-        if (personIndex !== -1) {
-          peopleList[personIndex].count = newCount;
-          await env.babaquinha.put(KV_PEOPLE_LIST, JSON.stringify(peopleList));
+        if (personIndex === -1) {
+          return new Response(
+            JSON.stringify({ error: "Pessoa não encontrada" }),
+            {
+              status: 404,
+              headers: { "content-type": "application/json" },
+            }
+          );
         }
+
+        // Incrementa contador
+        peopleList[personIndex].count =
+          (peopleList[personIndex].count || 0) + 1;
+        const newCount = peopleList[personIndex].count;
+
+        // Salva lista atualizada (única fonte de verdade)
+        await savePeopleList(env, peopleList);
 
         return new Response(JSON.stringify({ count: newCount }), {
           headers: {
@@ -420,21 +472,16 @@ export default {
 
     // Serve a página principal com todos os contadores
     try {
-      const peopleListJson = await env.babaquinha.get(KV_PEOPLE_LIST);
-      let peopleList = peopleListJson ? JSON.parse(peopleListJson) : [];
+      let peopleList = await getPeopleList(env);
 
       // Se não houver ninguém, adiciona Gabriel como padrão
       if (peopleList.length === 0) {
         peopleList = [{ id: "gabriel", name: "Gabriel", count: 0 }];
-        await env.babaquinha.put(KV_PEOPLE_LIST, JSON.stringify(peopleList));
-        await env.babaquinha.put(KV_KEY_PREFIX + "gabriel", "0");
+        await savePeopleList(env, peopleList);
       }
 
-      // Busca contadores atualizados para cada pessoa
-      for (let person of peopleList) {
-        const count = await env.babaquinha.get(KV_KEY_PREFIX + person.id);
-        person.count = parseInt(count) || 0;
-      }
+      // Limpa chaves antigas em background (não bloqueia resposta)
+      ctx.waitUntil(cleanupOldKeys(env, peopleList));
 
       const html = getHtmlTemplate(peopleList);
 
