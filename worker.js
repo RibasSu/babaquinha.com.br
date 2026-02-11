@@ -21,7 +21,39 @@ async function initDatabase(env) {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE CASCADE
     );
+    
+    CREATE TABLE IF NOT EXISTS site_stats (
+      key TEXT PRIMARY KEY,
+      value INTEGER DEFAULT 0
+    );
   `);
+}
+
+/**
+ * Incrementa e retorna o contador de visitas
+ */
+async function incrementVisitorCount(env) {
+  // Tenta incrementar o contador existente
+  await env.DB.prepare(
+    "INSERT INTO site_stats (key, value) VALUES ('visitor_count', 1) ON CONFLICT(key) DO UPDATE SET value = value + 1",
+  ).run();
+
+  const result = await env.DB.prepare(
+    "SELECT value FROM site_stats WHERE key = 'visitor_count'",
+  ).first();
+
+  return result?.value || 1;
+}
+
+/**
+ * Apenas retorna o contador de visitas sem incrementar
+ */
+async function getVisitorCount(env) {
+  const result = await env.DB.prepare(
+    "SELECT value FROM site_stats WHERE key = 'visitor_count'",
+  ).first();
+
+  return result?.value || 0;
 }
 
 /**
@@ -59,7 +91,7 @@ async function getPersonHistory(env, personId) {
   return result.results || [];
 }
 
-function getHtmlTemplate(people) {
+function getHtmlTemplate(people, visitorCount = 0) {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
   <head>
@@ -394,6 +426,160 @@ function getHtmlTemplate(people) {
           flex-shrink: 0;
         }
       }
+
+      /* Modal de Ajuda */
+      .help-btn {
+        display: inline-block;
+        width: 30px;
+        height: 30px;
+        background: #ffff00;
+        color: #000080;
+        border: 3px outset #fff;
+        border-radius: 50%;
+        font-weight: bold;
+        font-size: 18px;
+        cursor: pointer;
+        font-family: 'Times New Roman', serif;
+        vertical-align: middle;
+        margin-left: 10px;
+        line-height: 24px;
+        text-align: center;
+      }
+
+      .help-btn:hover {
+        background: #00ffff;
+      }
+
+      .help-btn:active {
+        border-style: inset;
+      }
+
+      .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 128, 0.8);
+        z-index: 2000;
+        justify-content: center;
+        align-items: center;
+        padding: 20px;
+      }
+
+      .modal-overlay.show {
+        display: flex;
+      }
+
+      .modal-window {
+        background: #c0c0c0;
+        border: 3px outset #fff;
+        max-width: 500px;
+        width: 100%;
+        max-height: 90vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .modal-titlebar {
+        background: linear-gradient(to right, #000080, #1084d0);
+        color: #fff;
+        padding: 4px 8px;
+        font-weight: bold;
+        font-family: 'MS Sans Serif', Arial, sans-serif;
+        font-size: 13px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-shrink: 0;
+      }
+
+      .modal-close {
+        background: #c0c0c0;
+        border: 2px outset #fff;
+        width: 20px;
+        height: 20px;
+        font-size: 12px;
+        font-weight: bold;
+        cursor: pointer;
+        line-height: 14px;
+      }
+
+      .modal-close:active {
+        border-style: inset;
+      }
+
+      .modal-content {
+        padding: 15px;
+        color: #000;
+        font-family: 'MS Sans Serif', Arial, sans-serif;
+        font-size: 13px;
+        line-height: 1.5;
+        overflow-y: auto;
+        flex: 1;
+        min-height: 0;
+      }
+
+      .modal-content h3 {
+        color: #800080;
+        margin: 15px 0 8px 0;
+        font-size: 14px;
+        border-bottom: 1px solid #808080;
+        padding-bottom: 3px;
+      }
+
+      .modal-content h3:first-child {
+        margin-top: 0;
+      }
+
+      .modal-content p {
+        margin: 8px 0;
+      }
+
+      .modal-content ul {
+        margin: 8px 0;
+        padding-left: 25px;
+      }
+
+      .modal-content li {
+        margin: 4px 0;
+      }
+
+      .modal-content .destaque {
+        background: #ffff00;
+        padding: 2px 4px;
+        font-weight: bold;
+      }
+
+      .modal-content .aviso {
+        background: #ff0000;
+        color: #fff;
+        padding: 8px;
+        margin: 10px 0;
+        text-align: center;
+        border: 2px inset #800000;
+      }
+
+      .modal-footer {
+        background: #c0c0c0;
+        padding: 10px;
+        text-align: center;
+        border-top: 1px solid #808080;
+        flex-shrink: 0;
+      }
+
+      .modal-footer button {
+        background: #c0c0c0;
+        border: 2px outset #fff;
+        padding: 5px 25px;
+        font-family: 'MS Sans Serif', Arial, sans-serif;
+        cursor: pointer;
+      }
+
+      .modal-footer button:active {
+        border-style: inset;
+      }
     </style>
   </head>
   <body>
@@ -427,7 +613,7 @@ function getHtmlTemplate(people) {
         <br> ★★★ DESDE 2025 ★★★
       </div>
       
-      <h1>~*~ Contador de Babaquinha ~*~</h1>
+      <h1>~*~ Contador de Babaquinha ~*~ <button class="help-btn" id="helpBtn" title="O que é isso?">?</button></h1>
       
       <hr>
       
@@ -465,22 +651,85 @@ function getHtmlTemplate(people) {
       <hr>
       
       <div class="under-construction">
-        <p>🚧 Site em eterna construção 🚧</p>
-        <p>Melhor visualizado em 800x600</p>
-        <p>Netscape Navigator 4.0+</p>
+        <p>[!] Site em eterna construção [!]</p>
       </div>
       
       <div style="text-align: center;">
         <div class="visitor-counter">
-          Visitante nº ${Math.floor(Math.random() * 9000) + 1000}
+          Visitante n° ${visitorCount.toString().padStart(6, "0")}
         </div>
       </div>
       
       <div class="guestbook-link">
-        <p>📧 <a href="mailto:webmaster@babaquinha.com.br">Contato do Webmaster</a> 📧</p>
+        <p>[>>] <a href="mailto:andre@ribassu.com">Contato do Webmaster</a> [<<]</p>
       </div>
       
     </main>
+
+    <!-- Modal de Alerta -->
+    <div class="modal-overlay" id="alertModal">
+      <div class="modal-window" style="max-width: 350px;">
+        <div class="modal-titlebar">
+          <span id="alertTitle">[i] Aviso</span>
+          <button class="modal-close" id="closeAlertModal">X</button>
+        </div>
+        <div class="modal-content" style="text-align: center;">
+          <div id="alertIcon" style="font-size: 32px; margin-bottom: 10px;">[!]</div>
+          <p id="alertMessage">Mensagem</p>
+        </div>
+        <div class="modal-footer">
+          <button id="alertOkBtn">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal de Ajuda -->
+    <div class="modal-overlay" id="helpModal">
+      <div class="modal-window">
+        <div class="modal-titlebar">
+          <span>[?] Ajuda - Babaquinha.exe</span>
+          <button class="modal-close" id="closeModal">X</button>
+        </div>
+        <div class="modal-content">
+          <h3>[i] O que é o Babaquinha?</h3>
+          <p>O <span class="destaque">Contador de Babaquinha</span> é um sistema altamente sofisticado de monitoramento comportamental interpessoal, desenvolvido com tecnologia de ponta para rastrear e quantificar momentos de babaquice.</p>
+          
+          <h3>[*] Para quem é?</h3>
+          <p>Este sistema foi projetado para:</p>
+          <ul>
+            <li>Grupos de amigos que precisam de accountability</li>
+            <li>Famílias com membros que "às vezes" passam dos limites</li>
+            <li>Escritórios onde certas pessoas merecem ser expostas (com amor)</li>
+            <li>Qualquer ambiente onde a babaquice precisa ser documentada para a posteridade</li>
+          </ul>
+          
+          <h3>[#] Como funciona?</h3>
+          <p>O processo é extremamente simples e cientificamente comprovado*:</p>
+          <ul>
+            <li><strong>1.</strong> Adicione o nome do babaquinha em potencial</li>
+            <li><strong>2.</strong> Quando a pessoa fizer jus ao título, clique em "+1 Babaquinha!!"</li>
+            <li><strong>3.</strong> Opcionalmente, registre o motivo para futuras consultas e constrangimentos</li>
+            <li><strong>4.</strong> Acompanhe o ranking em tempo real</li>
+          </ul>
+          <p style="font-size: 10px;">*Não há comprovação científica alguma.</p>
+          
+          <h3>[>] Por que foi criado?</h3>
+          <p>Este projeto nasceu da necessidade urgente de documentar, de forma oficial e irrefutável, quem são os verdadeiros babaquinhas do grupo. Chega de discussões do tipo "você fez isso" / "não fiz não" - agora temos <strong>DADOS</strong>.</p>
+          
+          <p>O sistema mantém um histórico completo com data, hora e motivo de cada ponto adicionado, garantindo total transparência e possibilitando futuras sessões de constrangimento público.</p>
+          
+          <div class="aviso">
+            /!\\ AVISO LEGAL: Use com responsabilidade. O desenvolvedor não se responsabiliza por amizades destruídas, brigas familiares ou demissões resultantes do uso deste sistema.
+          </div>
+          
+          <h3>[=] Limite Diário</h3>
+          <p>Para evitar abusos e guerras nucleares, cada usuário pode adicionar no máximo <span class="destaque">2 pontos por dia</span> para cada pessoa. Isso garante que apenas os momentos realmente memoráveis sejam registrados.</p>
+        </div>
+        <div class="modal-footer">
+          <button id="closeModalBtn">OK, Entendi!</button>
+        </div>
+      </div>
+    </div>
 
     <!-- VLibras -->
     <div vw class="enabled">
@@ -496,6 +745,79 @@ function getHtmlTemplate(people) {
 
     <script>
       const API_URL = "/api";
+
+      // Função para mostrar alertas customizados
+      function showAlert(message, type = 'info') {
+        const alertModal = document.getElementById('alertModal');
+        const alertTitle = document.getElementById('alertTitle');
+        const alertIcon = document.getElementById('alertIcon');
+        const alertMessage = document.getElementById('alertMessage');
+        
+        alertMessage.textContent = message;
+        
+        switch(type) {
+          case 'error':
+            alertTitle.textContent = '[X] Erro';
+            alertIcon.textContent = '[X]';
+            alertIcon.style.color = '#ff0000';
+            break;
+          case 'success':
+            alertTitle.textContent = '[+] Sucesso';
+            alertIcon.textContent = '[OK]';
+            alertIcon.style.color = '#00ff00';
+            break;
+          case 'warning':
+            alertTitle.textContent = '[!] Atenção';
+            alertIcon.textContent = '/!\\\\';
+            alertIcon.style.color = '#ffff00';
+            break;
+          default:
+            alertTitle.textContent = '[i] Aviso';
+            alertIcon.textContent = '[i]';
+            alertIcon.style.color = '#00ffff';
+        }
+        
+        alertModal.classList.add('show');
+      }
+
+      // Fecha modal de alerta
+      document.getElementById('closeAlertModal').addEventListener('click', () => {
+        document.getElementById('alertModal').classList.remove('show');
+      });
+      
+      document.getElementById('alertOkBtn').addEventListener('click', () => {
+        document.getElementById('alertModal').classList.remove('show');
+      });
+      
+      document.getElementById('alertModal').addEventListener('click', (e) => {
+        if (e.target.id === 'alertModal') {
+          document.getElementById('alertModal').classList.remove('show');
+        }
+      });
+
+      // Modal de Ajuda
+      const helpBtn = document.getElementById('helpBtn');
+      const helpModal = document.getElementById('helpModal');
+      const closeModal = document.getElementById('closeModal');
+      const closeModalBtn = document.getElementById('closeModalBtn');
+
+      helpBtn.addEventListener('click', () => {
+        helpModal.classList.add('show');
+      });
+
+      closeModal.addEventListener('click', () => {
+        helpModal.classList.remove('show');
+      });
+
+      closeModalBtn.addEventListener('click', () => {
+        helpModal.classList.remove('show');
+      });
+
+      helpModal.addEventListener('click', (e) => {
+        if (e.target === helpModal) {
+          helpModal.classList.remove('show');
+        }
+      });
 
       // Verifica quantas vezes o usuário já adicionou hoje para uma pessoa específica
       function checkDailyLimit(personId) {
@@ -602,7 +924,7 @@ function getHtmlTemplate(people) {
         const name = nameInput.value.trim();
 
         if (!name) {
-          alert("Por favor, insira um nome.");
+          showAlert("Por favor, insira um nome.", "warning");
           return;
         }
 
@@ -619,11 +941,11 @@ function getHtmlTemplate(people) {
             // Recarrega a página para mostrar a nova pessoa
             window.location.reload();
           } else {
-            alert("Erro ao adicionar pessoa.");
+            showAlert("Erro ao adicionar pessoa.", "error");
           }
         } catch (error) {
           console.error("Erro ao adicionar pessoa:", error);
-          alert("Erro ao adicionar pessoa.");
+          showAlert("Erro ao adicionar pessoa.", "error");
         }
       }
 
@@ -876,16 +1198,38 @@ export default {
     try {
       let peopleList = await getPeopleList(env);
 
-      const html = getHtmlTemplate(peopleList);
+      // Verifica se o visitante já foi contado (cookie)
+      const cookies = request.headers.get("Cookie") || "";
+      const hasVisited = cookies.includes("babaquinha_visited=1");
 
-      return new Response(html, {
-        headers: {
-          "content-type": "text/html;charset=UTF-8",
-        },
-      });
+      let visitorCount;
+      let setCookieHeader = null;
+
+      if (!hasVisited) {
+        // Novo visitante: incrementa e define cookie
+        visitorCount = await incrementVisitorCount(env);
+        // Cookie expira em 24 horas
+        setCookieHeader =
+          "babaquinha_visited=1; Path=/; Max-Age=86400; SameSite=Lax";
+      } else {
+        // Visitante já contado: apenas lê o contador
+        visitorCount = await getVisitorCount(env);
+      }
+
+      const html = getHtmlTemplate(peopleList, visitorCount);
+
+      const headers = {
+        "content-type": "text/html;charset=UTF-8",
+      };
+
+      if (setCookieHeader) {
+        headers["Set-Cookie"] = setCookieHeader;
+      }
+
+      return new Response(html, { headers });
     } catch (error) {
       console.error("Erro ao carregar página:", error);
-      const html = getHtmlTemplate([]);
+      const html = getHtmlTemplate([], 0);
       return new Response(html, {
         headers: {
           "content-type": "text/html;charset=UTF-8",
