@@ -67,85 +67,161 @@ function getHtmlTemplate(people) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Contador de Babaquinha</title>
     <style>
+      * {
+        box-sizing: border-box;
+      }
+
       :root {
         --font-size: 1em;
       }
 
       body.large-text {
-        --font-size: 1.5em;
+        --font-size: 1.3em;
       }
 
       body.extra-large-text {
-        --font-size: 2em;
+        --font-size: 1.6em;
       }
 
       body {
         font-size: var(--font-size);
+        font-family: 'Comic Sans MS', 'Chalkboard', cursive, sans-serif;
+        background: #000080;
+        background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffff00' fill-opacity='0.1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+        color: #ffff00;
+        margin: 0;
+        padding: 0;
       }
 
       body.high-contrast {
         background: #000;
+        background-image: none;
         color: #fff;
       }
 
       body.high-contrast button {
         background: #fff;
         color: #000;
-        border: 2px solid #fff;
       }
 
       #accessibility-bar {
         position: fixed;
         top: 0;
         right: 0;
-        background: #f0f0f0;
-        padding: 10px;
-        border-bottom-left-radius: 5px;
+        background: #c0c0c0;
+        padding: 4px;
+        border: 2px outset #fff;
         z-index: 1000;
       }
 
       #accessibility-bar button {
-        margin: 0 5px;
-        padding: 5px 10px;
+        padding: 4px 8px;
         cursor: pointer;
+        background: #c0c0c0;
+        border: 2px outset #fff;
+        font-family: 'MS Sans Serif', Arial, sans-serif;
+        font-size: 11px;
+        margin: 2px;
+      }
+
+      #accessibility-bar button:active {
+        border-style: inset;
+      }
+
+      main {
+        max-width: 700px;
+        margin: 0 auto;
+        padding: 20px 10px;
+      }
+
+      h1 {
+        text-align: center;
+        font-size: 2em;
+        color: #ff00ff;
+        text-shadow: 2px 2px #00ffff, -1px -1px #ff0000;
+        margin: 20px 0;
+        animation: blink 1s steps(1) infinite;
+      }
+
+      @keyframes blink {
+        50% { opacity: 0.5; }
+      }
+
+      .marquee-text {
+        background: #ff0000;
+        color: #ffff00;
+        padding: 5px;
+        font-weight: bold;
+        text-align: center;
+        margin-bottom: 20px;
+        border: 3px ridge #ffff00;
       }
 
       .person-card {
-        border: 1px solid #ccc;
-        padding: 15px;
-        margin: 10px 0;
-        border-radius: 5px;
+        background: #008080;
+        border: 3px ridge #c0c0c0;
+        padding: 10px;
+        margin: 15px 0;
       }
 
       .person-card h2 {
-        margin-top: 0;
+        margin: 0 0 10px 0;
+        font-size: 1.3em;
+        color: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px;
+        text-shadow: 1px 1px #000;
+      }
+
+      .person-card .count {
+        font-weight: bold;
+        color: #00ff00;
+        font-size: 1.4em;
+        text-shadow: 1px 1px #000;
       }
 
       .add-person-form {
+        background: #800080;
         margin: 20px 0;
         padding: 15px;
-        border: 2px dashed #ccc;
-        border-radius: 5px;
+        border: 3px ridge #ff00ff;
+      }
+
+      .add-person-form h2 {
+        margin: 0 0 10px 0;
+        font-size: 1.1em;
+        color: #ffffff;
+      }
+
+      .add-person-form .form-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
       }
 
       .add-person-form input {
-        padding: 8px;
-        margin: 5px;
+        flex: 1;
+        min-width: 150px;
+        padding: 6px;
         font-size: 1em;
+        border: 2px inset #c0c0c0;
+        font-family: 'Times New Roman', serif;
       }
 
       .add-person-form button {
-        padding: 8px 16px;
-        margin: 5px;
+        padding: 6px 15px;
         cursor: pointer;
+        background: #c0c0c0;
+        border: 2px outset #fff;
+        font-family: 'MS Sans Serif', Arial, sans-serif;
+        font-weight: bold;
       }
 
-      body.high-contrast .person-card {
-        border-color: #fff;
-      }
-
-      body.high-contrast .add-person-form {
-        border-color: #fff;
+      .add-person-form button:active {
+        border-style: inset;
       }
 
       .add-point-form {
@@ -156,37 +232,48 @@ function getHtmlTemplate(people) {
       }
 
       .add-point-form input[type="text"] {
-        padding: 8px;
+        padding: 6px;
         font-size: 0.9em;
-        border: 1px solid #ccc;
-        border-radius: 4px;
+        border: 2px inset #c0c0c0;
+        font-family: 'Times New Roman', serif;
+        width: 100%;
       }
 
       .add-point-form button {
-        padding: 8px 16px;
+        padding: 6px 15px;
         cursor: pointer;
+        background: #00ff00;
+        border: 2px outset #fff;
+        font-family: 'MS Sans Serif', Arial, sans-serif;
+        font-weight: bold;
+        color: #000;
+        align-self: flex-start;
+      }
+
+      .add-point-form button:active {
+        border-style: inset;
       }
 
       .history-toggle {
         background: none;
         border: none;
-        color: #0066cc;
+        color: #00ffff;
         cursor: pointer;
         font-size: 0.9em;
-        padding: 5px 0;
+        padding: 8px 0;
         text-decoration: underline;
       }
 
-      body.high-contrast .history-toggle {
-        color: #66b3ff;
+      .history-toggle:hover {
+        color: #ff00ff;
       }
 
       .history-list {
         display: none;
         margin-top: 10px;
         padding: 10px;
-        background: #f9f9f9;
-        border-radius: 5px;
+        background: #000080;
+        border: 2px inset #c0c0c0;
         max-height: 200px;
         overflow-y: auto;
       }
@@ -195,18 +282,11 @@ function getHtmlTemplate(people) {
         display: block;
       }
 
-      body.high-contrast .history-list {
-        background: #222;
-      }
-
       .history-item {
         padding: 5px 0;
-        border-bottom: 1px solid #eee;
+        border-bottom: 1px dashed #00ffff;
         font-size: 0.85em;
-      }
-
-      body.high-contrast .history-item {
-        border-bottom-color: #444;
+        color: #ffffff;
       }
 
       .history-item:last-child {
@@ -214,22 +294,105 @@ function getHtmlTemplate(people) {
       }
 
       .history-date {
-        color: #666;
-        font-size: 0.8em;
-      }
-
-      body.high-contrast .history-date {
-        color: #aaa;
+        color: #00ff00;
+        font-size: 0.85em;
+        font-family: 'Courier New', monospace;
       }
 
       .history-reason {
         font-style: italic;
+        color: #ffff00;
+        margin-top: 2px;
       }
 
-      body.high-contrast .add-point-form input {
-        background: #333;
-        color: #fff;
-        border-color: #fff;
+      .under-construction {
+        text-align: center;
+        margin-top: 30px;
+        font-size: 0.8em;
+        color: #00ffff;
+      }
+
+      .under-construction img {
+        vertical-align: middle;
+      }
+
+      .visitor-counter {
+        text-align: center;
+        margin-top: 20px;
+        font-family: 'Courier New', monospace;
+        color: #00ff00;
+        background: #000;
+        display: inline-block;
+        padding: 5px 10px;
+        border: 2px ridge #00ff00;
+      }
+
+      .guestbook-link {
+        text-align: center;
+        margin-top: 15px;
+      }
+
+      .guestbook-link a {
+        color: #ff00ff;
+        font-size: 1.1em;
+      }
+
+      hr {
+        border: none;
+        height: 3px;
+        background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff);
+        margin: 20px 0;
+      }
+
+      /* Media queries para responsividade */
+      @media (max-width: 600px) {
+        main {
+          padding: 15px 8px;
+        }
+
+        h1 {
+          font-size: 1.5em;
+        }
+
+        .person-card {
+          padding: 10px;
+        }
+
+        .person-card h2 {
+          font-size: 1.1em;
+        }
+
+        .add-person-form .form-row {
+          flex-direction: column;
+        }
+
+        .add-person-form input {
+          min-width: 100%;
+        }
+
+        .add-person-form button {
+          width: 100%;
+        }
+
+        .add-point-form button {
+          width: 100%;
+          align-self: stretch;
+        }
+      }
+
+      @media (min-width: 601px) {
+        .add-point-form {
+          flex-direction: row;
+          align-items: center;
+        }
+
+        .add-point-form input[type="text"] {
+          flex: 1;
+        }
+
+        .add-point-form button {
+          flex-shrink: 0;
+        }
       }
     </style>
   </head>
@@ -259,12 +422,21 @@ function getHtmlTemplate(people) {
     </div>
 
     <main>
-      <h1>Contador de Babaquinha</h1>
+      <div class="marquee-text">
+        ★★★ BEM-VINDO AO CONTADOR DE BABAQUINHA!!! ★★★
+        <br> ★★★ DESDE 2025 ★★★
+      </div>
+      
+      <h1>~*~ Contador de Babaquinha ~*~</h1>
+      
+      <hr>
       
       <div class="add-person-form">
-        <h2>Adicionar Nova Pessoa</h2>
-        <input type="text" id="newPersonName" placeholder="Nome da pessoa" />
-        <button id="addPersonBtn">Adicionar Pessoa</button>
+        <h2>:: Adicionar Nova Pessoa ::</h2>
+        <div class="form-row">
+          <input type="text" id="newPersonName" placeholder="Digite o nome aqui..." />
+          <button id="addPersonBtn">Adicionar Pessoa</button>
+        </div>
       </div>
 
       <div id="peopleList">
@@ -272,15 +444,15 @@ function getHtmlTemplate(people) {
           .map(
             (person) => `
           <div class="person-card">
-            <h2>${person.name}</h2>
-            <p role="status" aria-live="polite">
-              Foi babaquinha: <span class="count" data-person="${person.id}">${person.count}</span> vezes
-            </p>
+            <h2>
+              ${person.name}
+              <span class="count" data-person="${person.id}" role="status" aria-live="polite">${person.count} pts</span>
+            </h2>
             <div class="add-point-form">
               <input type="text" class="reason-input" data-person="${person.id}" placeholder="Por que está adicionando ponto? (opcional)" />
-              <button class="addBtn" data-person="${person.id}">Adicionar +1</button>
+              <button class="addBtn" data-person="${person.id}">+1 Babaquinha!!</button>
             </div>
-            <button class="history-toggle" data-person="${person.id}">Ver histórico</button>
+            <button class="history-toggle" data-person="${person.id}">[+] Ver histórico</button>
             <div class="history-list" id="history-${person.id}">
               <p>Carregando histórico...</p>
             </div>
@@ -289,6 +461,25 @@ function getHtmlTemplate(people) {
           )
           .join("")}
       </div>
+      
+      <hr>
+      
+      <div class="under-construction">
+        <p>🚧 Site em eterna construção 🚧</p>
+        <p>Melhor visualizado em 800x600</p>
+        <p>Netscape Navigator 4.0+</p>
+      </div>
+      
+      <div style="text-align: center;">
+        <div class="visitor-counter">
+          Visitante nº ${Math.floor(Math.random() * 9000) + 1000}
+        </div>
+      </div>
+      
+      <div class="guestbook-link">
+        <p>📧 <a href="mailto:webmaster@babaquinha.com.br">Contato do Webmaster</a> 📧</p>
+      </div>
+      
     </main>
 
     <!-- VLibras -->
@@ -346,7 +537,7 @@ function getHtmlTemplate(people) {
         const currentCount = parseInt(countElement.textContent);
 
         // Sempre incrementa visualmente
-        countElement.textContent = currentCount + 1;
+        countElement.textContent = (currentCount + 1) + " pts";
 
         // Só envia ao servidor se não atingiu o limite
         if (limit.count < 2) {
@@ -362,7 +553,7 @@ function getHtmlTemplate(people) {
             if (response.ok) {
               const data = await response.json();
               // Atualiza com o valor real do servidor
-              countElement.textContent = data.count;
+              countElement.textContent = data.count + " pts";
 
               const newLimit = limit.count + 1;
               updateDailyLimit(personId, newLimit);
@@ -387,12 +578,17 @@ function getHtmlTemplate(people) {
             if (history.length === 0) {
               historyDiv.innerHTML = "<p>Nenhum ponto registrado ainda.</p>";
             } else {
-              historyDiv.innerHTML = history.map(item => \`
+              historyDiv.innerHTML = history.map(item => {
+                // Adiciona 'Z' para indicar UTC e converter para Brasília
+                const date = new Date(item.created_at + 'Z');
+                const formattedDate = date.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+                return \`
                 <div class="history-item">
-                  <span class="history-date">\${new Date(item.created_at).toLocaleString('pt-BR')}</span>
+                  <span class="history-date">\${formattedDate}</span>
                   \${item.reason ? \`<br><span class="history-reason">"\${item.reason}"</span>\` : ''}
                 </div>
-              \`).join("");
+              \`;
+              }).join("");
             }
           }
         } catch (error) {
@@ -447,11 +643,11 @@ function getHtmlTemplate(people) {
           
           if (historyDiv.classList.contains("show")) {
             historyDiv.classList.remove("show");
-            e.target.textContent = "Ver histórico";
+            e.target.textContent = "[+] Ver histórico";
           } else {
             await loadHistory(personId);
             historyDiv.classList.add("show");
-            e.target.textContent = "Ocultar histórico";
+            e.target.textContent = "[-] Ocultar histórico";
           }
         });
       });
@@ -678,9 +874,6 @@ export default {
 
     // Serve a página principal com todos os contadores
     try {
-      // Inicializa o banco de dados se necessário
-      await initDatabase(env);
-
       let peopleList = await getPeopleList(env);
 
       const html = getHtmlTemplate(peopleList);
@@ -691,6 +884,7 @@ export default {
         },
       });
     } catch (error) {
+      console.error("Erro ao carregar página:", error);
       const html = getHtmlTemplate([]);
       return new Response(html, {
         headers: {
