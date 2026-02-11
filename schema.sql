@@ -16,6 +16,12 @@ CREATE TABLE IF NOT EXISTS points_history (
     FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE CASCADE
 );
 
+-- Tabela de estatísticas do site
+CREATE TABLE IF NOT EXISTS site_stats (
+    key TEXT PRIMARY KEY,
+    value INTEGER DEFAULT 0
+);
+
 -- Índice para buscar pontos por pessoa
 CREATE INDEX IF NOT EXISTS idx_points_person_id ON points_history(person_id);
 
