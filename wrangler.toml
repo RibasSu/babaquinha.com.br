@@ -12,13 +12,11 @@ database_name = "babaquinha"
 database_id = "8f58c2f3-1862-4228-a60e-d558ae854227"
 
 [observability]
-enabled = true
-
 [observability.logs]
-enabled = false
-head_sampling_rate = 1
+enabled = true
 invocation_logs = true
-persist = true
+[observability.traces]
+enabled = true
 
 [env.production]
 name = "babaquinha-production"
