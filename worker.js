@@ -907,7 +907,7 @@ function getHtmlTemplate(people, visitorCount = 0) {
                 return \`
                 <div class="history-item">
                   <span class="history-date">\${formattedDate}</span>
-                  \${item.reason ? \`<br><span class="history-reason">"\${item.reason}"</span>\` : ''}
+                  \${item.reason ? \`<br><span class="history-reason">❝\${item.reason}❞</span>\` : ''}
                 </div>
               \`;
               }).join("");
