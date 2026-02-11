@@ -117,7 +117,7 @@ function getHtmlTemplate(people, visitorCount = 0) {
 
       body {
         font-size: var(--font-size);
-        font-family: 'Comic Sans MS', 'Chalkboard', cursive, sans-serif;
+        font-family: 'Times New Roman', serif;
         background: #000080;
         background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffff00' fill-opacity='0.1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
         color: #ffff00;
@@ -907,7 +907,7 @@ function getHtmlTemplate(people, visitorCount = 0) {
                 return \`
                 <div class="history-item">
                   <span class="history-date">\${formattedDate}</span>
-                  \${item.reason ? \`<br><span class="history-reason">"\${item.reason}"</span>\` : ''}
+                  \${item.reason ? \`<br><span class="history-reason">❝\${item.reason}❞</span>\` : ''}
                 </div>
               \`;
               }).join("");
