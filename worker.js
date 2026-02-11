@@ -1,43 +1,62 @@
 /**
  * Cloudflare Worker to serve the Babaquinha counter page
+ * Usando D1 como banco de dados
  */
 
-const KV_PEOPLE_LIST = "people_list";
+/**
+ * Inicializa as tabelas do banco de dados se não existirem
+ */
+async function initDatabase(env) {
+  await env.DB.exec(`
+    CREATE TABLE IF NOT EXISTS people (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    CREATE TABLE IF NOT EXISTS points_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      person_id TEXT NOT NULL,
+      reason TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE CASCADE
+    );
+  `);
+}
 
 /**
- * Busca a lista de pessoas do KV
+ * Busca a lista de pessoas do D1 ordenada por pontos (decrescente)
  */
 async function getPeopleList(env) {
-  const peopleListJson = await env.babaquinha.get(KV_PEOPLE_LIST);
-  return peopleListJson ? JSON.parse(peopleListJson) : [];
+  const result = await env.DB.prepare(
+    `
+    SELECT p.id, p.name, COUNT(ph.id) as count
+    FROM people p
+    LEFT JOIN points_history ph ON p.id = ph.person_id
+    GROUP BY p.id, p.name
+    ORDER BY count DESC, p.name ASC
+  `,
+  ).all();
+
+  return result.results || [];
 }
 
 /**
- * Salva a lista de pessoas no KV
+ * Busca o histórico de pontos de uma pessoa
  */
-async function savePeopleList(env, peopleList) {
-  await env.babaquinha.put(KV_PEOPLE_LIST, JSON.stringify(peopleList));
-}
+async function getPersonHistory(env, personId) {
+  const result = await env.DB.prepare(
+    `
+    SELECT reason, created_at
+    FROM points_history
+    WHERE person_id = ?
+    ORDER BY created_at DESC
+  `,
+  )
+    .bind(personId)
+    .all();
 
-/**
- * Limpa chaves antigas/duplicadas do KV (person_* individuais)
- */
-async function cleanupOldKeys(env, peopleList) {
-  // Remove chaves individuais antigas que não são mais necessárias
-  for (const person of peopleList) {
-    try {
-      await env.babaquinha.delete(`person_${person.id}`);
-    } catch (error) {
-      console.error(`Erro ao limpar chave person_${person.id}:`, error);
-    }
-  }
-
-  // Remove contador legado
-  try {
-    await env.babaquinha.delete("babaquinha_count");
-  } catch (error) {
-    console.error("Erro ao limpar chave legada:", error);
-  }
+  return result.results || [];
 }
 
 function getHtmlTemplate(people) {
@@ -128,6 +147,90 @@ function getHtmlTemplate(people) {
       body.high-contrast .add-person-form {
         border-color: #fff;
       }
+
+      .add-point-form {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .add-point-form input[type="text"] {
+        padding: 8px;
+        font-size: 0.9em;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+      }
+
+      .add-point-form button {
+        padding: 8px 16px;
+        cursor: pointer;
+      }
+
+      .history-toggle {
+        background: none;
+        border: none;
+        color: #0066cc;
+        cursor: pointer;
+        font-size: 0.9em;
+        padding: 5px 0;
+        text-decoration: underline;
+      }
+
+      body.high-contrast .history-toggle {
+        color: #66b3ff;
+      }
+
+      .history-list {
+        display: none;
+        margin-top: 10px;
+        padding: 10px;
+        background: #f9f9f9;
+        border-radius: 5px;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+
+      .history-list.show {
+        display: block;
+      }
+
+      body.high-contrast .history-list {
+        background: #222;
+      }
+
+      .history-item {
+        padding: 5px 0;
+        border-bottom: 1px solid #eee;
+        font-size: 0.85em;
+      }
+
+      body.high-contrast .history-item {
+        border-bottom-color: #444;
+      }
+
+      .history-item:last-child {
+        border-bottom: none;
+      }
+
+      .history-date {
+        color: #666;
+        font-size: 0.8em;
+      }
+
+      body.high-contrast .history-date {
+        color: #aaa;
+      }
+
+      .history-reason {
+        font-style: italic;
+      }
+
+      body.high-contrast .add-point-form input {
+        background: #333;
+        color: #fff;
+        border-color: #fff;
+      }
     </style>
   </head>
   <body>
@@ -173,9 +276,16 @@ function getHtmlTemplate(people) {
             <p role="status" aria-live="polite">
               Foi babaquinha: <span class="count" data-person="${person.id}">${person.count}</span> vezes
             </p>
-            <button class="addBtn" data-person="${person.id}">Adicionar +1</button>
+            <div class="add-point-form">
+              <input type="text" class="reason-input" data-person="${person.id}" placeholder="Por que está adicionando ponto? (opcional)" />
+              <button class="addBtn" data-person="${person.id}">Adicionar +1</button>
+            </div>
+            <button class="history-toggle" data-person="${person.id}">Ver histórico</button>
+            <div class="history-list" id="history-${person.id}">
+              <p>Carregando histórico...</p>
+            </div>
           </div>
-        `
+        `,
           )
           .join("")}
       </div>
@@ -231,6 +341,8 @@ function getHtmlTemplate(people) {
       async function incrementCount(personId) {
         const limit = checkDailyLimit(personId);
         const countElement = document.querySelector(\`.count[data-person="\${personId}"]\`);
+        const reasonInput = document.querySelector(\`.reason-input[data-person="\${personId}"]\`);
+        const reason = reasonInput ? reasonInput.value.trim() : "";
         const currentCount = parseInt(countElement.textContent);
 
         // Sempre incrementa visualmente
@@ -241,6 +353,10 @@ function getHtmlTemplate(people) {
           try {
             const response = await fetch(\`\${API_URL}/person/\${personId}/increment\`, {
               method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ reason }),
             });
 
             if (response.ok) {
@@ -250,10 +366,38 @@ function getHtmlTemplate(people) {
 
               const newLimit = limit.count + 1;
               updateDailyLimit(personId, newLimit);
+
+              // Limpa o campo de razão
+              if (reasonInput) {
+                reasonInput.value = "";
+              }
             }
           } catch (error) {
             console.error("Erro ao incrementar contador:", error);
           }
+        }
+      }
+
+      async function loadHistory(personId) {
+        const historyDiv = document.getElementById(\`history-\${personId}\`);
+        try {
+          const response = await fetch(\`\${API_URL}/person/\${personId}/history\`);
+          if (response.ok) {
+            const history = await response.json();
+            if (history.length === 0) {
+              historyDiv.innerHTML = "<p>Nenhum ponto registrado ainda.</p>";
+            } else {
+              historyDiv.innerHTML = history.map(item => \`
+                <div class="history-item">
+                  <span class="history-date">\${new Date(item.created_at).toLocaleString('pt-BR')}</span>
+                  \${item.reason ? \`<br><span class="history-reason">"\${item.reason}"</span>\` : ''}
+                </div>
+              \`).join("");
+            }
+          }
+        } catch (error) {
+          console.error("Erro ao carregar histórico:", error);
+          historyDiv.innerHTML = "<p>Erro ao carregar histórico.</p>";
         }
       }
 
@@ -292,6 +436,23 @@ function getHtmlTemplate(people) {
         btn.addEventListener("click", (e) => {
           const personId = e.target.dataset.person;
           incrementCount(personId);
+        });
+      });
+
+      // Event listeners para botões de histórico
+      document.querySelectorAll(".history-toggle").forEach(btn => {
+        btn.addEventListener("click", async (e) => {
+          const personId = e.target.dataset.person;
+          const historyDiv = document.getElementById(\`history-\${personId}\`);
+          
+          if (historyDiv.classList.contains("show")) {
+            historyDiv.classList.remove("show");
+            e.target.textContent = "Ver histórico";
+          } else {
+            await loadHistory(personId);
+            historyDiv.classList.add("show");
+            e.target.textContent = "Ocultar histórico";
+          }
         });
       });
 
@@ -358,7 +519,7 @@ export default {
           {
             status: 500,
             headers: { "content-type": "application/json" },
-          }
+          },
         );
       }
     }
@@ -375,34 +536,35 @@ export default {
           });
         }
 
+        const trimmedName = name.trim();
+
         // Gera ID único baseado no nome e timestamp
         const personId =
-          name.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now();
-
-        // Obtém lista atual de pessoas
-        const peopleList = await getPeopleList(env);
+          trimmedName.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now();
 
         // Verifica se já existe pessoa com mesmo nome
-        const existingPerson = peopleList.find(
-          (p) => p.name.toLowerCase() === name.trim().toLowerCase()
-        );
+        const existing = await env.DB.prepare(
+          "SELECT id FROM people WHERE LOWER(name) = LOWER(?)",
+        )
+          .bind(trimmedName)
+          .first();
 
-        if (existingPerson) {
+        if (existing) {
           return new Response(
             JSON.stringify({ error: "Pessoa com este nome já existe" }),
             {
               status: 400,
               headers: { "content-type": "application/json" },
-            }
+            },
           );
         }
 
-        // Adiciona nova pessoa
-        const newPerson = { id: personId, name: name.trim(), count: 0 };
-        peopleList.push(newPerson);
+        // Adiciona nova pessoa no D1
+        await env.DB.prepare("INSERT INTO people (id, name) VALUES (?, ?)")
+          .bind(personId, trimmedName)
+          .run();
 
-        // Salva lista atualizada (única fonte de verdade)
-        await savePeopleList(env, peopleList);
+        const newPerson = { id: personId, name: trimmedName, count: 0 };
 
         return new Response(JSON.stringify(newPerson), {
           headers: {
@@ -416,7 +578,7 @@ export default {
           {
             status: 500,
             headers: { "content-type": "application/json" },
-          }
+          },
         );
       }
     }
@@ -429,29 +591,47 @@ export default {
       try {
         const personId = url.pathname.split("/")[3];
 
-        // Obtém lista atual
-        const peopleList = await getPeopleList(env);
+        // Tenta extrair a razão do body
+        let reason = "";
+        try {
+          const body = await request.json();
+          reason = body.reason || "";
+        } catch (e) {
+          // Se não tiver body JSON, apenas continua sem razão
+        }
 
-        // Encontra a pessoa
-        const personIndex = peopleList.findIndex((p) => p.id === personId);
+        // Verifica se a pessoa existe
+        const person = await env.DB.prepare(
+          "SELECT id FROM people WHERE id = ?",
+        )
+          .bind(personId)
+          .first();
 
-        if (personIndex === -1) {
+        if (!person) {
           return new Response(
             JSON.stringify({ error: "Pessoa não encontrada" }),
             {
               status: 404,
               headers: { "content-type": "application/json" },
-            }
+            },
           );
         }
 
-        // Incrementa contador
-        peopleList[personIndex].count =
-          (peopleList[personIndex].count || 0) + 1;
-        const newCount = peopleList[personIndex].count;
+        // Adiciona um ponto no histórico (com razão e timestamp)
+        await env.DB.prepare(
+          "INSERT INTO points_history (person_id, reason) VALUES (?, ?)",
+        )
+          .bind(personId, reason || null)
+          .run();
 
-        // Salva lista atualizada (única fonte de verdade)
-        await savePeopleList(env, peopleList);
+        // Conta o total de pontos
+        const countResult = await env.DB.prepare(
+          "SELECT COUNT(*) as count FROM points_history WHERE person_id = ?",
+        )
+          .bind(personId)
+          .first();
+
+        const newCount = countResult?.count || 0;
 
         return new Response(JSON.stringify({ count: newCount }), {
           headers: {
@@ -465,17 +645,43 @@ export default {
           {
             status: 500,
             headers: { "content-type": "application/json" },
-          }
+          },
+        );
+      }
+    }
+
+    // API endpoint para obter histórico de uma pessoa
+    if (
+      url.pathname.match(/^\/api\/person\/[^\/]+\/history$/) &&
+      request.method === "GET"
+    ) {
+      try {
+        const personId = url.pathname.split("/")[3];
+        const history = await getPersonHistory(env, personId);
+
+        return new Response(JSON.stringify(history), {
+          headers: {
+            "content-type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      } catch (error) {
+        return new Response(
+          JSON.stringify({ error: "Erro ao buscar histórico" }),
+          {
+            status: 500,
+            headers: { "content-type": "application/json" },
+          },
         );
       }
     }
 
     // Serve a página principal com todos os contadores
     try {
-      let peopleList = await getPeopleList(env);
+      // Inicializa o banco de dados se necessário
+      await initDatabase(env);
 
-      // Limpa chaves antigas em background (não bloqueia resposta)
-      ctx.waitUntil(cleanupOldKeys(env, peopleList));
+      let peopleList = await getPeopleList(env);
 
       const html = getHtmlTemplate(peopleList);
 
@@ -485,9 +691,7 @@ export default {
         },
       });
     } catch (error) {
-      const html = getHtmlTemplate([
-        { id: "gabriel", name: "Gabriel", count: 0 },
-      ]);
+      const html = getHtmlTemplate([]);
       return new Response(html, {
         headers: {
           "content-type": "text/html;charset=UTF-8",
