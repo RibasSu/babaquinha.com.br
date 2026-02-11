@@ -1,5 +1,41 @@
 # Technical Documentation - Babaquinha Counter System
 
+## ⚠️ IMPORTANT: Database Migration Notice
+
+This project has been migrated from Cloudflare KV to **Cloudflare D1** (SQL database). The documentation below may contain references to the old KV implementation.
+
+### Setting up D1 Database
+
+1. Create the D1 database:
+
+```bash
+npx wrangler d1 create babaquinha-db
+```
+
+2. Copy the database ID from the output and update `wrangler.toml` with your actual database ID:
+
+```toml
+[[d1_databases]]
+binding = "DB"
+database_name = "babaquinha-db"
+database_id = "YOUR_ACTUAL_DATABASE_ID"
+```
+
+3. Apply the database schema:
+
+```bash
+npx wrangler d1 execute babaquinha-db --file=./schema.sql
+```
+
+4. For production, also update the `[env.production]` section with the same database ID.
+
+### New Features
+
+- **Explanation field**: When adding points, you can now explain why the point is being added
+- **Descending order**: People are listed by points in descending order
+- **History with timestamps**: Each point addition is recorded with date/time
+- **Empty name validation**: Cannot add people with empty names
+
 ## Table of Contents
 
 1. [System Overview](#system-overview)
@@ -322,17 +358,14 @@ The application targets WCAG 2.1 Level AA compliance through multiple accessibil
 The implementation uses ARIA attributes to enhance screen reader compatibility:
 
 1. role="status" on counter paragraph
-
    - Indicates dynamically updating content
    - Non-intrusive announcements to screen readers
 
 2. aria-live="polite" on counter
-
    - Screen readers announce changes when idle
    - Prevents interruption of current announcements
 
 3. aria-label on accessibility buttons
-
    - Provides descriptive labels for icon buttons
    - Supplements visual-only indicators
 
@@ -393,12 +426,10 @@ VLibras integration provides real-time translation to Brazilian Sign Language, a
 By rendering the counter value server-side, the application achieves:
 
 1. Faster First Contentful Paint (FCP)
-
    - Content visible without client-side API call
    - Reduces perceived load time
 
 2. Reduced JavaScript Execution
-
    - No initial fetch() call required
    - Lower CPU usage on client devices
 
@@ -411,12 +442,10 @@ By rendering the counter value server-side, the application achieves:
 Cloudflare Workers execute at edge locations near users, providing:
 
 1. Low Latency
-
    - Typical response times: 10-50ms
    - Eliminates round-trip to origin server
 
 2. High Availability
-
    - Automatic failover between data centers
    - No single point of failure
 
@@ -429,13 +458,11 @@ Cloudflare Workers execute at edge locations near users, providing:
 The application minimizes resource usage through:
 
 1. No External Dependencies
-
    - VLibras loaded asynchronously
    - No JavaScript framework overhead
    - Minimal CSS payload
 
 2. Efficient DOM Manipulation
-
    - Direct element reference (getElementById)
    - Minimal reflows and repaints
    - Event delegation not required (few elements)
@@ -460,19 +487,16 @@ The HTML response does not include Cache-Control headers, ensuring users always 
 The project uses Bun as the package manager and JavaScript runtime for development tasks. Bun provides several advantages over traditional package managers:
 
 1. Performance
-
    - Significantly faster package installation (up to 30x faster than npm)
    - Native TypeScript and JSX support without configuration
    - Fast module resolution and bundling
 
 2. Compatibility
-
    - Drop-in replacement for npm, yarn, and pnpm
    - Uses package.json standard format
    - Compatible with npm registry
 
 3. Developer Experience
-
    - Single binary for runtime and package manager
    - Built-in test runner and bundler
    - Watch mode for development
@@ -487,14 +511,12 @@ The project uses Bun as the package manager and JavaScript runtime for developme
 ### Development Workflow
 
 1. Local Development
-
    - Run `bun run dev` or `bunx wrangler dev` for local testing
    - Worker executes in local Bun runtime environment
    - KV operations simulated locally
    - Bun provides faster startup times than Node.js
 
 2. Testing
-
    - Manual testing in development environment
    - Verify counter increments correctly
    - Test rate limiting behavior
@@ -564,19 +586,16 @@ persist = true
 Cloudflare automatically collects performance metrics:
 
 1. Request Count
-
    - Total requests per time period
    - Breakdown by status code
    - Geographic distribution
 
 2. Response Time
-
    - P50, P75, P95, P99 percentiles
    - Per-endpoint breakdown
    - Trend analysis
 
 3. Error Rate
-
    - 4xx and 5xx response rates
    - Error type categorization
    - Alert threshold configuration
@@ -591,7 +610,6 @@ Cloudflare automatically collects performance metrics:
 KV operations generate separate metrics:
 
 1. Read Operations
-
    - Request count and latency
    - Cache hit rate
    - Error rate
@@ -732,7 +750,6 @@ Fields:
 The client maintains two separate state values:
 
 1. Displayed Counter
-
    - Increments on every button click
    - Stored only in DOM (not persisted)
    - May diverge from server value after rate limit
@@ -800,22 +817,18 @@ VLibras script failures do not impact core functionality as it loads asynchronou
 The application relies on modern JavaScript APIs with broad browser support:
 
 1. Fetch API
-
    - Supported: All modern browsers
    - Fallback: None required for target audience
 
 2. Async/Await
-
    - Supported: All modern browsers
    - Transpilation: Not required
 
 3. Template Literals
-
    - Supported: All modern browsers
    - Fallback: Use string concatenation if needed
 
 4. Arrow Functions
-
    - Supported: All modern browsers
    - Transpilation: Not required for target browsers
 
@@ -826,12 +839,10 @@ The application relies on modern JavaScript APIs with broad browser support:
 ### CSS Features Used
 
 1. CSS Custom Properties (Variables)
-
    - Supported: All modern browsers
    - Fallback: Define static styles for older browsers
 
 2. Flexbox
-
    - Not currently used but recommended for layout
    - Supported: All modern browsers
 
@@ -875,13 +886,11 @@ Under high concurrent load, the read-modify-write pattern for counter increments
 Cloudflare Workers auto-scale to handle traffic spikes:
 
 1. Horizontal Scaling
-
    - Workers automatically spawn across edge locations
    - No manual scaling configuration required
    - Linear cost scaling with request volume
 
 2. Request Limits
-
    - CPU time: 50ms per request (can be increased)
    - Memory: 128MB per request
    - Concurrent requests: Effectively unlimited
@@ -896,7 +905,6 @@ Cloudflare Workers auto-scale to handle traffic spikes:
 Cloudflare Workers pricing considerations:
 
 1. Free Tier
-
    - 100,000 requests per day
    - Sufficient for small to medium traffic
 
@@ -912,7 +920,6 @@ Cloudflare Workers pricing considerations:
 The edge computing model provides optimal performance globally:
 
 1. Data Center Coverage
-
    - 200+ cities worldwide
    - Sub-50ms latency for most users
    - Automatic routing to nearest location
