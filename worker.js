@@ -1159,6 +1159,14 @@ function getHtmlTemplate(people, visitorCount = 0) {
 
 
       async function handleSuperVote(personId) {
+        const voteKey = "super_vote_pending_" + personId;
+        const alreadyVoted = localStorage.getItem(voteKey) === "1";
+
+        if (alreadyVoted) {
+          showAlert("Você já votou para este Super Babaquinha. Aguarde os outros votos.", "warning");
+          return;
+        }
+
         const input = document.querySelector('.super-voter-input[data-person="' + personId + '"]');
         const progressEl = document.querySelector('.super-progress[data-person="' + personId + '"]');
         const countEl = document.querySelector('.super-count[data-person="' + personId + '"]');
@@ -1198,11 +1206,14 @@ function getHtmlTemplate(people, visitorCount = 0) {
             }
 
             showAlert("Super Babaquinha aprovado! 🎉", "success");
+            localStorage.removeItem(voteKey);
           } else {
             if (progressEl) {
               progressEl.textContent = "Votos: " + data.currentVotes + "/4";
             }
             showAlert("Voto computado! Faltam " + data.votesNeeded + " votos.", "info");
+            // trava novas tentativas neste navegador até o super ser aprovado
+            localStorage.setItem(voteKey, "1");
           }
 
           if (input) {
