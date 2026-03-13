@@ -22,10 +22,38 @@ async function initDatabase(env) {
       FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE CASCADE
     );
     
+    CREATE TABLE IF NOT EXISTS super_votes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      person_id TEXT NOT NULL,
+      voter_name TEXT NOT NULL,
+      voter_key TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE CASCADE,
+      UNIQUE(person_id, voter_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS super_points (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      person_id TEXT NOT NULL,
+      approved_by TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS people_photos (
+      person_id TEXT PRIMARY KEY,
+      photo_data TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE CASCADE
+    );
+    
     CREATE TABLE IF NOT EXISTS site_stats (
       key TEXT PRIMARY KEY,
       value INTEGER DEFAULT 0
     );
+
+    CREATE INDEX IF NOT EXISTS idx_super_votes_person_id ON super_votes(person_id);
+    CREATE INDEX IF NOT EXISTS idx_super_points_person_id ON super_points(person_id);
   `);
 }
 
@@ -62,11 +90,31 @@ async function getVisitorCount(env) {
 async function getPeopleList(env) {
   const result = await env.DB.prepare(
     `
-    SELECT p.id, p.name, COUNT(ph.id) as count
+    SELECT
+      p.id,
+      p.name,
+      COALESCE(ph.count, 0) as count,
+      COALESCE(sp.count, 0) as super_count,
+      COALESCE(sv.count, 0) as pending_super_votes,
+      pp.photo_data as photo
     FROM people p
-    LEFT JOIN points_history ph ON p.id = ph.person_id
-    GROUP BY p.id, p.name
-    ORDER BY count DESC, p.name ASC
+    LEFT JOIN (
+      SELECT person_id, COUNT(*) as count
+      FROM points_history
+      GROUP BY person_id
+    ) ph ON ph.person_id = p.id
+    LEFT JOIN (
+      SELECT person_id, COUNT(*) as count
+      FROM super_points
+      GROUP BY person_id
+    ) sp ON sp.person_id = p.id
+    LEFT JOIN (
+      SELECT person_id, COUNT(*) as count
+      FROM super_votes
+      GROUP BY person_id
+    ) sv ON sv.person_id = p.id
+    LEFT JOIN people_photos pp ON pp.person_id = p.id
+    ORDER BY super_count DESC, count DESC, p.name ASC
   `,
   ).all();
 
@@ -79,13 +127,20 @@ async function getPeopleList(env) {
 async function getPersonHistory(env, personId) {
   const result = await env.DB.prepare(
     `
-    SELECT reason, created_at
+    SELECT reason, created_at, 'regular' as type
     FROM points_history
+    WHERE person_id = ?
+    UNION ALL
+    SELECT
+      COALESCE(approved_by, 'Super Babaquinha aprovado!') as reason,
+      created_at,
+      'super' as type
+    FROM super_points
     WHERE person_id = ?
     ORDER BY created_at DESC
   `,
   )
-    .bind(personId)
+    .bind(personId, personId)
     .all();
 
   return result.results || [];
@@ -215,6 +270,134 @@ function getHtmlTemplate(people, visitorCount = 0) {
         text-shadow: 1px 1px #000;
       }
 
+      .person-meta {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+
+      .photo-box {
+        width: 140px;
+        min-width: 120px;
+        background: #004d4d;
+        border: 2px inset #c0c0c0;
+        padding: 8px;
+        text-align: center;
+        color: #ffffff;
+      }
+
+      .person-photo {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        object-fit: cover;
+        border: 3px ridge #ffff00;
+        display: block;
+        margin-bottom: 8px;
+      }
+
+      .photo-placeholder {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        background: repeating-linear-gradient(45deg, #004040, #004040 10px, #005959 10px, #005959 20px);
+        border: 3px ridge #ffff00;
+        display: grid;
+        place-items: center;
+        font-size: 0.9em;
+        font-weight: bold;
+        color: #ffff00;
+        margin-bottom: 8px;
+      }
+
+      .photo-input {
+        display: none;
+      }
+
+      .upload-btn {
+        display: inline-block;
+        padding: 6px 10px;
+        background: #c0c0c0;
+        border: 2px outset #fff;
+        cursor: pointer;
+        font-family: 'MS Sans Serif', Arial, sans-serif;
+        font-weight: bold;
+        color: #000;
+      }
+
+      .upload-btn:active {
+        border-style: inset;
+      }
+
+      .person-actions {
+        flex: 1;
+        min-width: 230px;
+      }
+
+      .super-section {
+        margin-top: 12px;
+        padding: 10px;
+        border: 2px dashed #ff00ff;
+        background: rgba(0, 0, 0, 0.25);
+      }
+
+      .super-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        color: #ffff00;
+        font-weight: bold;
+      }
+
+      .super-count {
+        background: #ff00ff;
+        color: #000;
+        padding: 4px 10px;
+        border: 2px inset #000;
+        min-width: 40px;
+        text-align: center;
+      }
+
+      .super-progress {
+        margin-top: 6px;
+        color: #00ffff;
+        font-size: 0.95em;
+      }
+
+      .super-form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+      }
+
+      .super-form input {
+        flex: 1;
+        min-width: 150px;
+        padding: 6px;
+        border: 2px inset #c0c0c0;
+        font-family: 'Times New Roman', serif;
+      }
+
+      .super-form button {
+        padding: 6px 12px;
+        background: #ffff00;
+        border: 2px outset #fff;
+        cursor: pointer;
+        font-weight: bold;
+        font-family: 'MS Sans Serif', Arial, sans-serif;
+      }
+
+      .super-form button:active {
+        border-style: inset;
+      }
+
+      .super-tip {
+        margin: 6px 0 0 0;
+        font-size: 0.85em;
+        color: #ffffff;
+      }
+
       .add-person-form {
         background: #800080;
         margin: 20px 0;
@@ -335,6 +518,19 @@ function getHtmlTemplate(people, visitorCount = 0) {
         font-style: italic;
         color: #ffff00;
         margin-top: 2px;
+      }
+
+      .history-item.super-history {
+        background: rgba(255, 0, 255, 0.1);
+        border-bottom: 1px dashed #ff00ff;
+      }
+
+      .history-item.super-history .history-date {
+        color: #ff00ff;
+      }
+
+      .history-item.super-history .history-reason {
+        color: #ffccff;
       }
 
       .under-construction {
@@ -634,9 +830,38 @@ function getHtmlTemplate(people, visitorCount = 0) {
               ${person.name}
               <span class="count" data-person="${person.id}" role="status" aria-live="polite">${person.count} pts</span>
             </h2>
-            <div class="add-point-form">
-              <input type="text" class="reason-input" data-person="${person.id}" placeholder="Por que está adicionando ponto? (opcional)" />
-              <button class="addBtn" data-person="${person.id}">+1 Babaquinha!!</button>
+            <div class="person-meta">
+              <div class="photo-box">
+                ${
+                  person.photo
+                    ? `<img src="${person.photo}" alt="Foto de ${person.name}" class="person-photo" data-person-photo="${person.id}" data-person-name="${person.name}" />`
+                    : `<div class="photo-placeholder" data-person-photo="${person.id}" data-person-name="${person.name}">Sem foto</div>`
+                }
+                <input type="file" accept="image/*" class="photo-input" data-person="${person.id}" id="photo-${person.id}" aria-label="Enviar foto de ${person.name}" />
+                <label class="upload-btn" for="photo-${person.id}">Enviar foto</label>
+              </div>
+
+              <div class="person-actions">
+                <div class="add-point-form">
+                  <input type="text" class="reason-input" data-person="${person.id}" placeholder="Por que está adicionando ponto? (opcional)" />
+                  <button class="addBtn" data-person="${person.id}">+1 Babaquinha!!</button>
+                </div>
+
+                <div class="super-section">
+                  <div class="super-header">
+                    <span class="super-title">Super Babaquinha ⭐</span>
+                    <span class="super-count" data-person="${person.id}" aria-label="Total de supers">${person.super_count || 0}</span>
+                  </div>
+                  <div class="super-progress" data-person="${person.id}">
+                    Votos: ${(person.pending_super_votes || 0)}/4
+                  </div>
+                  <div class="super-form">
+                    <input type="text" class="super-voter-input" data-person="${person.id}" placeholder="Digite seu nome para votar" />
+                    <button class="super-vote-btn" data-person="${person.id}">Votar Super</button>
+                  </div>
+                  <p class="super-tip">Precisa de 4 votos diferentes para liberar 1 ponto especial.</p>
+                </div>
+              </div>
             </div>
             <button class="history-toggle" data-person="${person.id}">[+] Ver histórico</button>
             <div class="history-list" id="history-${person.id}">
@@ -904,12 +1129,14 @@ function getHtmlTemplate(people, visitorCount = 0) {
                 // Adiciona 'Z' para indicar UTC e converter para Brasília
                 const date = new Date(item.created_at + 'Z');
                 const formattedDate = date.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-                return \`
-                <div class="history-item">
-                  <span class="history-date">\${formattedDate}</span>
-                  \${item.reason ? \`<br><span class="history-reason">❝\${item.reason}❞</span>\` : ''}
-                </div>
-              \`;
+                const isSuper = item.type === 'super';
+                const reasonText = item.reason ? "❝" + item.reason + "❞" : (isSuper ? 'Super Babaquinha aprovado!' : '');
+                return (
+                  '<div class="history-item ' + (isSuper ? 'super-history' : '') + '">' +
+                  '<span class="history-date">' + formattedDate + (isSuper ? ' ⭐' : '') + '</span>' +
+                  (reasonText ? '<br><span class="history-reason">' + reasonText + '</span>' : '') +
+                  '</div>'
+                );
               }).join("");
             }
           }
@@ -919,6 +1146,112 @@ function getHtmlTemplate(people, visitorCount = 0) {
         }
       }
 
+
+
+      async function handleSuperVote(personId) {
+        const input = document.querySelector('.super-voter-input[data-person="' + personId + '"]');
+        const progressEl = document.querySelector('.super-progress[data-person="' + personId + '"]');
+        const countEl = document.querySelector('.super-count[data-person="' + personId + '"]');
+        const name = input ? input.value.trim() : "";
+
+        if (!name) {
+          showAlert("Digite seu nome para votar no Super Babaquinha.", "warning");
+          return;
+        }
+
+        try {
+          const response = await fetch(API_URL + "/person/" + personId + "/super-vote", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ voter: name }),
+          });
+
+          const data = await response.json();
+
+          if (!response.ok) {
+            showAlert(data.error || "Erro ao registrar voto.", "error");
+            return;
+          }
+
+          if (data.superApproved) {
+            const newSuperCount =
+              typeof data.superCount === "number"
+                ? data.superCount
+                : (countEl ? parseInt(countEl.textContent || "0", 10) : 0) + 1;
+
+            if (countEl) {
+              countEl.textContent = newSuperCount;
+            }
+
+            if (progressEl) {
+              progressEl.textContent = "Votos: 0/4";
+            }
+
+            showAlert("Super Babaquinha aprovado! 🎉", "success");
+          } else {
+            if (progressEl) {
+              progressEl.textContent = "Votos: " + data.currentVotes + "/4";
+            }
+            showAlert("Voto computado! Faltam " + data.votesNeeded + " votos.", "info");
+          }
+
+          if (input) {
+            input.value = "";
+          }
+        } catch (error) {
+          console.error("Erro ao votar no super:", error);
+          showAlert("Erro ao votar no super babaquinha.", "error");
+        }
+      }
+
+      function handlePhotoUpload(personId, file) {
+        if (!file) return;
+
+        if (file.size > 1.5 * 1024 * 1024) {
+          showAlert("Foto muito grande (máx 1.5MB).", "warning");
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const base64 = reader.result;
+          try {
+            const response = await fetch(API_URL + "/person/" + personId + "/photo", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ photo: base64 }),
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+              showAlert(data.error || "Erro ao salvar foto.", "error");
+              return;
+            }
+
+            const photoEl = document.querySelector('[data-person-photo="' + personId + '"]');
+            if (photoEl) {
+              if (photoEl.tagName === "IMG") {
+                photoEl.src = base64;
+              } else {
+                const img = document.createElement("img");
+                img.src = base64;
+                img.alt = "Foto de " + (photoEl.dataset.personName || "");
+                img.className = "person-photo";
+                img.dataset.personPhoto = personId;
+                img.dataset.personName = photoEl.dataset.personName || "";
+                photoEl.replaceWith(img);
+              }
+            }
+
+            showAlert("Foto atualizada!", "success");
+          } catch (error) {
+            console.error("Erro ao enviar foto:", error);
+            showAlert("Erro ao enviar foto.", "error");
+          }
+        };
+
+        reader.readAsDataURL(file);
+      }
       async function addPerson() {
         const nameInput = document.getElementById("newPersonName");
         const name = nameInput.value.trim();
@@ -974,6 +1307,34 @@ function getHtmlTemplate(people, visitorCount = 0) {
         });
       });
 
+
+
+      // Event listeners para Super Babaquinha
+      document.querySelectorAll(".super-vote-btn").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          const personId = e.target.dataset.person;
+          handleSuperVote(personId);
+        });
+      });
+
+      document.querySelectorAll(".super-voter-input").forEach(input => {
+        input.addEventListener("keypress", (e) => {
+          if (e.key === "Enter") {
+            handleSuperVote(e.target.dataset.person);
+          }
+        });
+      });
+
+      // Upload de fotos
+      document.querySelectorAll(".photo-input").forEach(input => {
+        input.addEventListener("change", (e) => {
+          const file = e.target.files && e.target.files[0];
+          const personId = e.target.dataset.person;
+          handlePhotoUpload(personId, file);
+          // Permite reenviar a mesma imagem se o usuário quiser
+          e.target.value = "";
+        });
+      });
       // Event listener para adicionar pessoa
       document.getElementById("addPersonBtn").addEventListener("click", addPerson);
 
@@ -1018,6 +1379,8 @@ function getHtmlTemplate(people, visitorCount = 0) {
 
 export default {
   async fetch(request, env, ctx) {
+    // Garante que o schema necessário exista (tabelas novas para Super Babaquinha e fotos)
+    await initDatabase(env);
     const url = new URL(request.url);
 
     // API endpoint para obter todas as pessoas
@@ -1160,6 +1523,241 @@ export default {
       } catch (error) {
         return new Response(
           JSON.stringify({ error: "Erro ao incrementar contador" }),
+          {
+            status: 500,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+    }
+
+    // API endpoint para votar no Super Babaquinha
+    if (
+      url.pathname.match(/^\/api\/person\/[^\/]+\/super-vote$/) &&
+      request.method === "POST"
+    ) {
+      try {
+        const personId = url.pathname.split("/")[3];
+
+        // Verifica se a pessoa existe
+        const person = await env.DB.prepare(
+          "SELECT id FROM people WHERE id = ?",
+        )
+          .bind(personId)
+          .first();
+
+        if (!person) {
+          return new Response(
+            JSON.stringify({ error: "Pessoa não encontrada" }),
+            {
+              status: 404,
+              headers: { "content-type": "application/json" },
+            },
+          );
+        }
+
+        const { voter } = await request.json();
+        const voterName = (voter || "").trim();
+
+        if (!voterName) {
+          return new Response(
+            JSON.stringify({ error: "Nome do votante é obrigatório" }),
+            {
+              status: 400,
+              headers: { "content-type": "application/json" },
+            },
+          );
+        }
+
+        // Normaliza para evitar votos duplicados (case-insensitive, ignora espaços extras)
+        const voterKey = voterName
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/\p{Diacritic}/gu, "")
+          .replace(/\s+/g, " ")
+          .trim();
+
+        try {
+          await env.DB.prepare(
+            `
+            INSERT INTO super_votes (person_id, voter_name, voter_key)
+            VALUES (?, ?, ?)
+          `,
+          )
+            .bind(personId, voterName, voterKey)
+            .run();
+        } catch (err) {
+          // Tratamento de voto duplicado
+          if (
+            err?.message &&
+            err.message.toLowerCase().includes("unique constraint failed")
+          ) {
+            return new Response(
+              JSON.stringify({
+                error: "Você já votou para este Super Babaquinha.",
+                duplicate: true,
+              }),
+              {
+                status: 409,
+                headers: { "content-type": "application/json" },
+              },
+            );
+          }
+          throw err;
+        }
+
+        // Conta quantos votos existem agora
+        const voteCountResult = await env.DB.prepare(
+          "SELECT COUNT(*) as count FROM super_votes WHERE person_id = ?",
+        )
+          .bind(personId)
+          .first();
+
+        const currentVotes = voteCountResult?.count || 0;
+
+        if (currentVotes >= 4) {
+          // Coleta os nomes dos votantes para registrar na aprovação
+          const votersResult = await env.DB.prepare(
+            `SELECT voter_name FROM super_votes WHERE person_id = ? ORDER BY created_at`,
+          )
+            .bind(personId)
+            .all();
+
+          const approvedBy = (votersResult?.results || [])
+            .map((v) => v.voter_name)
+            .join(", ");
+
+          // Registra ponto especial
+          await env.DB.prepare(
+            `INSERT INTO super_points (person_id, approved_by) VALUES (?, ?)`,
+          )
+            .bind(personId, approvedBy)
+            .run();
+
+          // Limpa a fila de votos para começar de novo
+          await env.DB.prepare(
+            `DELETE FROM super_votes WHERE person_id = ?`,
+          )
+            .bind(personId)
+            .run();
+
+          // Busca total de supers
+          const superCountResult = await env.DB.prepare(
+            `SELECT COUNT(*) as count FROM super_points WHERE person_id = ?`,
+          )
+            .bind(personId)
+            .first();
+
+          const superCount = superCountResult?.count || 0;
+
+          return new Response(
+            JSON.stringify({
+              superApproved: true,
+              superCount,
+              message: "Super Babaquinha aprovado com 4 votos!",
+            }),
+            {
+              headers: {
+                "content-type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+              },
+            },
+          );
+        }
+
+        return new Response(
+          JSON.stringify({
+            superApproved: false,
+            currentVotes,
+            votesNeeded: Math.max(0, 4 - currentVotes),
+          }),
+          {
+            headers: {
+              "content-type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            },
+          },
+        );
+      } catch (error) {
+        return new Response(
+          JSON.stringify({ error: "Erro ao registrar voto" }),
+          {
+            status: 500,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+    }
+
+    // API endpoint para salvar/atualizar foto de uma pessoa
+    if (
+      url.pathname.match(/^\/api\/person\/[^\/]+\/photo$/) &&
+      request.method === "POST"
+    ) {
+      try {
+        const personId = url.pathname.split("/")[3];
+
+        const person = await env.DB.prepare(
+          "SELECT id FROM people WHERE id = ?",
+        )
+          .bind(personId)
+          .first();
+
+        if (!person) {
+          return new Response(
+            JSON.stringify({ error: "Pessoa não encontrada" }),
+            {
+              status: 404,
+              headers: { "content-type": "application/json" },
+            },
+          );
+        }
+
+        const { photo } = await request.json();
+        const photoData = (photo || "").trim();
+
+        if (!photoData || !photoData.startsWith("data:image")) {
+          return new Response(
+            JSON.stringify({ error: "Foto inválida" }),
+            {
+              status: 400,
+              headers: { "content-type": "application/json" },
+            },
+          );
+        }
+
+        // Limite de ~1.5MB para evitar abusos (tamanho do data URL)
+        if (photoData.length > 2_000_000) {
+          return new Response(
+            JSON.stringify({ error: "Foto muito grande (limite 1.5MB)" }),
+            {
+              status: 400,
+              headers: { "content-type": "application/json" },
+            },
+          );
+        }
+
+        await env.DB.prepare(
+          `
+          INSERT INTO people_photos (person_id, photo_data)
+          VALUES (?, ?)
+          ON CONFLICT(person_id) DO UPDATE SET
+            photo_data = excluded.photo_data,
+            updated_at = CURRENT_TIMESTAMP
+        `,
+        )
+          .bind(personId, photoData)
+          .run();
+
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: {
+            "content-type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      } catch (error) {
+        return new Response(
+          JSON.stringify({ error: "Erro ao salvar foto" }),
           {
             status: 500,
             headers: { "content-type": "application/json" },
