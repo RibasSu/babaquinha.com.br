@@ -7,54 +7,64 @@
  * Inicializa as tabelas do banco de dados se não existirem
  */
 async function initDatabase(env) {
-  await env.DB.exec(`
-    CREATE TABLE IF NOT EXISTS people (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-    
-    CREATE TABLE IF NOT EXISTS points_history (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      person_id TEXT NOT NULL,
-      reason TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE CASCADE
-    );
-    
-    CREATE TABLE IF NOT EXISTS super_votes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      person_id TEXT NOT NULL,
-      voter_name TEXT NOT NULL,
-      voter_key TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE CASCADE,
-      UNIQUE(person_id, voter_key)
-    );
-
-    CREATE TABLE IF NOT EXISTS super_points (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      person_id TEXT NOT NULL,
-      approved_by TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS people_photos (
-      person_id TEXT PRIMARY KEY,
-      photo_data TEXT,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE CASCADE
-    );
-    
-    CREATE TABLE IF NOT EXISTS site_stats (
-      key TEXT PRIMARY KEY,
-      value INTEGER DEFAULT 0
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_super_votes_person_id ON super_votes(person_id);
-    CREATE INDEX IF NOT EXISTS idx_super_points_person_id ON super_points(person_id);
-  `);
+  await env.DB.batch([
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS people (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `),
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS points_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        person_id TEXT NOT NULL,
+        reason TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE CASCADE
+      )
+    `),
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS super_votes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        person_id TEXT NOT NULL,
+        voter_name TEXT NOT NULL,
+        voter_key TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE CASCADE,
+        UNIQUE(person_id, voter_key)
+      )
+    `),
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS super_points (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        person_id TEXT NOT NULL,
+        approved_by TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE CASCADE
+      )
+    `),
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS people_photos (
+        person_id TEXT PRIMARY KEY,
+        photo_data TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE CASCADE
+      )
+    `),
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS site_stats (
+        key TEXT PRIMARY KEY,
+        value INTEGER DEFAULT 0
+      )
+    `),
+    env.DB.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_super_votes_person_id ON super_votes(person_id)",
+    ),
+    env.DB.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_super_points_person_id ON super_points(person_id)",
+    ),
+  ]);
 }
 
 /**
