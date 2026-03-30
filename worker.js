@@ -600,6 +600,73 @@ function getHtmlTemplate(people, visitorCount = 0) {
         opacity: 0.65;
       }
 
+      .super-vote-status {
+        font-size: 0.85em;
+        color: #ffcc00;
+      }
+
+      .super-info-profile {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+        background: #000080;
+        border: 2px inset #c0c0c0;
+        padding: 8px;
+        color: #fff;
+      }
+
+      .super-info-photo {
+        width: 92px;
+        min-width: 92px;
+        height: 92px;
+        border: 2px ridge #ffff00;
+        background: #001a66;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        color: #ffff00;
+        font-size: 0.78em;
+        text-align: center;
+        padding: 4px;
+      }
+
+      .super-info-photo img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .super-info-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 170px;
+      }
+
+      .super-info-name {
+        font-weight: bold;
+        color: #ffff00;
+      }
+
+      .super-info-stat {
+        font-size: 0.9em;
+      }
+
+      .super-vote-history {
+        margin: 8px 0 0 0;
+        padding-left: 20px;
+      }
+
+      .super-vote-history li {
+        margin: 4px 0;
+      }
+
+      .super-vote-empty {
+        color: #666;
+        font-style: italic;
+      }
+
       .under-construction {
         text-align: center;
         margin-top: 30px;
@@ -910,7 +977,7 @@ function getHtmlTemplate(people, visitorCount = 0) {
 
               <div class="person-actions">
                 <div class="add-point-form">
-                  <input type="text" class="reason-input" data-person="${person.id}" placeholder="Por que está adicionando ponto? (opcional)" />
+                  <input type="text" class="reason-input" data-person="${person.id}" placeholder="Por que está adicionando ponto? (obrigatório)" />
                   <button class="addBtn" data-person="${person.id}">+1 Babaquinha!!</button>
                 </div>
 
@@ -926,7 +993,7 @@ function getHtmlTemplate(people, visitorCount = 0) {
                     <input type="text" class="super-justification-input" data-person="${person.id}" placeholder="Digite a justificativa para iniciar os votos" />
                     <button class="super-vote-btn" data-person="${person.id}">Votar Super</button>
                   </div>
-                  <p class="super-tip">A primeira votação precisa de justificativa. Todos os votos são anônimos (4 votos liberam 1 ponto especial).</p>
+                  <p class="super-tip">A primeira votação precisa de justificativa. 4 votos liberam 1 ponto especial.</p>
                 </div>
               </div>
             </div>
@@ -992,6 +1059,23 @@ function getHtmlTemplate(people, visitorCount = 0) {
       </div>
     </div>
 
+    <!-- Modal de detalhes da votação pendente -->
+    <div class="modal-overlay" id="superVoteDetailsModal">
+      <div class="modal-window" style="max-width: 560px;">
+        <div class="modal-titlebar">
+          <span id="superVoteDetailsTitle">[i] Informações da votação</span>
+          <button class="modal-close" id="closeSuperVoteDetailsModal">X</button>
+        </div>
+        <div class="modal-content" id="superVoteDetailsContent">
+          <p>Carregando informações da votação...</p>
+        </div>
+        <div class="modal-footer">
+          <button id="superVoteDetailsBackBtn">Voltar</button>
+          <button id="superVoteDetailsVoteBtn">Votar agora</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Modal de Ajuda -->
     <div class="modal-overlay" id="helpModal">
       <div class="modal-window">
@@ -1017,7 +1101,7 @@ function getHtmlTemplate(people, visitorCount = 0) {
           <ul>
             <li><strong>1.</strong> Adicione o nome do babaquinha em potencial</li>
             <li><strong>2.</strong> Quando a pessoa fizer jus ao título, clique em "+1 Babaquinha!!"</li>
-            <li><strong>3.</strong> Opcionalmente, registre o motivo para futuras consultas e constrangimentos</li>
+            <li><strong>3.</strong> Registre o motivo (obrigatório) para futuras consultas e constrangimentos</li>
             <li><strong>4.</strong> Acompanhe o ranking em tempo real</li>
           </ul>
           <p style="font-size: 10px;">*Não há comprovação científica alguma.</p>
@@ -1107,9 +1191,28 @@ function getHtmlTemplate(people, visitorCount = 0) {
       // Modal de votação pendente do Super Babaquinha
       const superVoteModal = document.getElementById('superVoteModal');
       const superVoteList = document.getElementById('superVoteList');
+      const superVoteDetailsModal = document.getElementById('superVoteDetailsModal');
+      const superVoteDetailsTitle = document.getElementById('superVoteDetailsTitle');
+      const superVoteDetailsContent = document.getElementById('superVoteDetailsContent');
+      const superVoteDetailsVoteBtn = document.getElementById('superVoteDetailsVoteBtn');
+      let activeSuperVotePersonId = "";
+      let activeSuperVoteRoundId = "";
 
       function closeSuperVoteModal() {
         superVoteModal.classList.remove('show');
+      }
+
+      function closeSuperVoteDetailsModal() {
+        superVoteDetailsModal.classList.remove('show');
+      }
+
+      function escapeHtml(value) {
+        return String(value || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
       }
 
       function getCurrentSuperVotes(progressEl) {
@@ -1138,19 +1241,90 @@ function getHtmlTemplate(people, visitorCount = 0) {
         return localStorage.getItem(key) === "1";
       }
 
-      function focusSuperVoteTarget(personId) {
-        const card = document.querySelector('[data-person-card="' + personId + '"]');
-        const input = document.querySelector('.super-justification-input[data-person="' + personId + '"]');
+      function formatVoteDate(createdAt) {
+        if (!createdAt) return "Data indisponível";
+        const date = new Date(createdAt + "Z");
+        return date.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+      }
 
-        if (card) {
-          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          card.classList.add('vote-target-highlight');
-          setTimeout(() => card.classList.remove('vote-target-highlight'), 1300);
+      function renderSuperVoteDetails(data) {
+        const person = data.person || {};
+        const voteHistory = Array.isArray(data.voteHistory) ? data.voteHistory : [];
+        const reason = (data.reason || "").trim();
+        const reasonText = reason || "Motivo não informado nesta rodada.";
+        const roundId = String(data.roundId || "").trim();
+
+        activeSuperVotePersonId = person.id || "";
+        activeSuperVoteRoundId = roundId;
+
+        const alreadyVoted = hasBrowserVotedInRound(activeSuperVotePersonId, activeSuperVoteRoundId);
+        const canStillVote = !alreadyVoted && data.currentVotes > 0 && data.currentVotes < 4;
+
+        superVoteDetailsTitle.textContent = "[i] Votação de " + (person.name || "Pessoa");
+
+        const photoHtml = person.photo
+          ? '<div class="super-info-photo"><img src="' + escapeHtml(person.photo) + '" alt="Foto de ' + escapeHtml(person.name || "Pessoa") + '" /></div>'
+          : '<div class="super-info-photo">Sem foto</div>';
+
+        const historyHtml = voteHistory.length
+          ? '<ul class="super-vote-history">' +
+              voteHistory.map((item) => {
+                const marker = item.isStarter ? " (início da votação)" : "";
+                return '<li>Voto #' + item.position + " - " + escapeHtml(formatVoteDate(item.created_at) + marker) + "</li>";
+              }).join("") +
+            '</ul>'
+          : '<p class="super-vote-empty">Nenhum voto registrado.</p>';
+
+        superVoteDetailsContent.innerHTML =
+          '<div class="super-info-profile">' +
+            photoHtml +
+            '<div class="super-info-meta">' +
+              '<span class="super-info-name">' + escapeHtml(person.name || "Pessoa") + '</span>' +
+              '<span class="super-info-stat">Babaquinhas: ' + (person.count || 0) + '</span>' +
+              '<span class="super-info-stat">Supers: ' + (person.super_count || 0) + '</span>' +
+              '<span class="super-info-stat">Votação atual: ' + (data.currentVotes || 0) + '/4</span>' +
+            '</div>' +
+          '</div>' +
+          '<h3>[i] Motivo do Super Babaquinha</h3>' +
+          '<p>❝' + escapeHtml(reasonText) + '❞</p>' +
+          '<h3>[#] Histórico de votos</h3>' +
+          historyHtml;
+
+        if (alreadyVoted) {
+          superVoteDetailsVoteBtn.textContent = "Já votei nessa votação";
+        } else if (!canStillVote) {
+          superVoteDetailsVoteBtn.textContent = "Votação encerrada";
+        } else {
+          superVoteDetailsVoteBtn.textContent = "Votar agora";
         }
 
-        if (input) {
-          input.focus();
-          input.select();
+        superVoteDetailsVoteBtn.disabled = !canStillVote;
+      }
+
+      async function openSuperVoteDetails(personId) {
+        superVoteDetailsTitle.textContent = "[i] Carregando...";
+        superVoteDetailsContent.innerHTML = "<p>Carregando informações da votação...</p>";
+        superVoteDetailsVoteBtn.disabled = true;
+        superVoteDetailsVoteBtn.textContent = "Carregando...";
+        superVoteDetailsModal.classList.add('show');
+
+        try {
+          const response = await fetch(API_URL + "/person/" + personId + "/super-vote-info");
+          const data = await response.json();
+
+          if (!response.ok) {
+            showAlert(data.error || "Não foi possível carregar as informações da votação.", "warning");
+            closeSuperVoteDetailsModal();
+            openSuperVoteModalIfNeeded();
+            return;
+          }
+
+          renderSuperVoteDetails(data);
+        } catch (error) {
+          console.error("Erro ao carregar detalhes da votação:", error);
+          showAlert("Erro ao carregar detalhes da votação.", "error");
+          closeSuperVoteDetailsModal();
+          openSuperVoteModalIfNeeded();
         }
       }
 
@@ -1192,16 +1366,20 @@ function getHtmlTemplate(people, visitorCount = 0) {
           const progress = document.createElement('span');
           progress.textContent = 'Votos: ' + item.currentVotes + '/4';
 
+          if (item.alreadyVoted) {
+            const status = document.createElement('span');
+            status.className = 'super-vote-status';
+            status.textContent = 'Você já votou nesta votação.';
+            info.appendChild(status);
+          }
+
           const actionBtn = document.createElement('button');
           actionBtn.className = 'super-vote-btn-modal';
-          actionBtn.textContent = item.alreadyVoted ? 'Já votei' : 'Votar';
-          actionBtn.disabled = item.alreadyVoted;
-          if (!item.alreadyVoted) {
-            actionBtn.addEventListener('click', () => {
-              closeSuperVoteModal();
-              focusSuperVoteTarget(item.personId);
-            });
-          }
+          actionBtn.textContent = 'Ver informações...';
+          actionBtn.addEventListener('click', () => {
+            closeSuperVoteModal();
+            openSuperVoteDetails(item.personId);
+          });
 
           info.appendChild(name);
           info.appendChild(progress);
@@ -1219,6 +1397,37 @@ function getHtmlTemplate(people, visitorCount = 0) {
         if (e.target === superVoteModal) {
           closeSuperVoteModal();
         }
+      });
+
+      document.getElementById('closeSuperVoteDetailsModal').addEventListener('click', closeSuperVoteDetailsModal);
+      document.getElementById('superVoteDetailsBackBtn').addEventListener('click', () => {
+        closeSuperVoteDetailsModal();
+        openSuperVoteModalIfNeeded();
+      });
+      superVoteDetailsModal.addEventListener('click', (e) => {
+        if (e.target === superVoteDetailsModal) {
+          closeSuperVoteDetailsModal();
+        }
+      });
+      superVoteDetailsVoteBtn.addEventListener('click', async () => {
+        if (!activeSuperVotePersonId) return;
+
+        superVoteDetailsVoteBtn.disabled = true;
+        superVoteDetailsVoteBtn.textContent = "Votando...";
+
+        const result = await handleSuperVote(activeSuperVotePersonId);
+        if (!result || !result.ok) {
+          await openSuperVoteDetails(activeSuperVotePersonId);
+          return;
+        }
+
+        if (result.data && result.data.superApproved) {
+          closeSuperVoteDetailsModal();
+          openSuperVoteModalIfNeeded();
+          return;
+        }
+
+        await openSuperVoteDetails(activeSuperVotePersonId);
       });
 
       // Modal de Ajuda
@@ -1284,6 +1493,14 @@ function getHtmlTemplate(people, visitorCount = 0) {
         const reason = reasonInput ? reasonInput.value.trim() : "";
         const currentCount = parseInt(countElement.textContent);
 
+        if (!reason) {
+          showAlert("A justificativa é obrigatória para adicionar ponto.", "warning");
+          if (reasonInput) {
+            reasonInput.focus();
+          }
+          return;
+        }
+
         // Sempre incrementa visualmente
         countElement.textContent = (currentCount + 1) + " pts";
 
@@ -1310,9 +1527,15 @@ function getHtmlTemplate(people, visitorCount = 0) {
               if (reasonInput) {
                 reasonInput.value = "";
               }
+            } else {
+              countElement.textContent = currentCount + " pts";
+              const data = await response.json().catch(() => null);
+              showAlert((data && data.error) || "Erro ao adicionar ponto.", "error");
             }
           } catch (error) {
             console.error("Erro ao incrementar contador:", error);
+            countElement.textContent = currentCount + " pts";
+            showAlert("Erro ao adicionar ponto.", "error");
           }
         }
       }
@@ -1359,12 +1582,12 @@ function getHtmlTemplate(people, visitorCount = 0) {
 
         if (currentVotes > 0 && hasBrowserVotedInRound(personId, currentRoundId)) {
           showAlert("Você já votou nesta votação deste Super Babaquinha. Aguarde os outros votos.", "warning");
-          return;
+          return { ok: false, reason: "already_voted" };
         }
 
         if (currentVotes === 0 && !justification) {
           showAlert("Digite uma justificativa para iniciar os votos do Super Babaquinha.", "warning");
-          return;
+          return { ok: false, reason: "missing_justification" };
         }
 
         try {
@@ -1378,7 +1601,7 @@ function getHtmlTemplate(people, visitorCount = 0) {
 
           if (!response.ok) {
             showAlert(data.error || "Erro ao registrar voto.", "error");
-            return;
+            return { ok: false, reason: "request_error", data };
           }
 
           if (data.superApproved) {
@@ -1408,7 +1631,7 @@ function getHtmlTemplate(people, visitorCount = 0) {
               progressEl.textContent = "Votos: " + data.currentVotes + "/4";
               progressEl.dataset.voteRound = newRoundId;
             }
-            showAlert("Voto anônimo computado! Faltam " + data.votesNeeded + " votos.", "info");
+            showAlert("Voto computado! Faltam " + data.votesNeeded + " votos.", "info");
             const newVoteKey = getSuperVoteStorageKey(personId, newRoundId);
             if (newVoteKey) {
               localStorage.setItem(newVoteKey, "1");
@@ -1418,9 +1641,11 @@ function getHtmlTemplate(people, visitorCount = 0) {
           if (input) {
             input.value = "";
           }
+          return { ok: true, data };
         } catch (error) {
           console.error("Erro ao votar no super:", error);
           showAlert("Erro ao votar no super babaquinha.", "error");
+          return { ok: false, reason: "network_error" };
         }
       }
 
@@ -1699,9 +1924,19 @@ export default {
         let reason = "";
         try {
           const body = await request.json();
-          reason = body.reason || "";
+          reason = (body.reason || "").trim();
         } catch (e) {
-          // Se não tiver body JSON, apenas continua sem razão
+          // Se não tiver body JSON, segue para validação obrigatória
+        }
+
+        if (!reason) {
+          return new Response(
+            JSON.stringify({ error: "Justificativa é obrigatória" }),
+            {
+              status: 400,
+              headers: { "content-type": "application/json" },
+            },
+          );
         }
 
         // Verifica se a pessoa existe
@@ -1725,7 +1960,7 @@ export default {
         await env.DB.prepare(
           "INSERT INTO points_history (person_id, reason) VALUES (?, ?)",
         )
-          .bind(personId, reason || null)
+          .bind(personId, reason)
           .run();
 
         // Conta o total de pontos
@@ -1746,6 +1981,99 @@ export default {
       } catch (error) {
         return new Response(
           JSON.stringify({ error: "Erro ao incrementar contador" }),
+          {
+            status: 500,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+    }
+
+    // API endpoint para buscar detalhes da votação pendente do Super Babaquinha
+    if (
+      url.pathname.match(/^\/api\/person\/[^\/]+\/super-vote-info$/) &&
+      request.method === "GET"
+    ) {
+      try {
+        const personId = url.pathname.split("/")[3];
+
+        const person = await env.DB.prepare(
+          `
+          SELECT
+            p.id,
+            p.name,
+            pp.photo_data as photo,
+            (SELECT COUNT(*) FROM points_history WHERE person_id = p.id) as count,
+            (SELECT COUNT(*) FROM super_points WHERE person_id = p.id) as super_count
+          FROM people p
+          LEFT JOIN people_photos pp ON pp.person_id = p.id
+          WHERE p.id = ?
+        `,
+        )
+          .bind(personId)
+          .first();
+
+        if (!person) {
+          return new Response(
+            JSON.stringify({ error: "Pessoa não encontrada" }),
+            {
+              status: 404,
+              headers: { "content-type": "application/json" },
+            },
+          );
+        }
+
+        const votesResult = await env.DB.prepare(
+          `
+          SELECT id, voter_name, created_at
+          FROM super_votes
+          WHERE person_id = ?
+          ORDER BY id ASC
+        `,
+        )
+          .bind(personId)
+          .all();
+
+        const voteHistory = votesResult?.results || [];
+        if (voteHistory.length === 0) {
+          return new Response(
+            JSON.stringify({ error: "Não há votação pendente para esta pessoa." }),
+            {
+              status: 404,
+              headers: { "content-type": "application/json" },
+            },
+          );
+        }
+
+        const starterVote = voteHistory.find(
+          (vote) => String(vote.voter_name || "").trim() !== "",
+        );
+        const reason = starterVote ? String(starterVote.voter_name || "").trim() : "";
+        const roundId = voteHistory[0]?.id || null;
+
+        return new Response(
+          JSON.stringify({
+            person,
+            roundId,
+            reason,
+            currentVotes: voteHistory.length,
+            votesNeeded: Math.max(0, 4 - voteHistory.length),
+            voteHistory: voteHistory.map((vote, index) => ({
+              position: index + 1,
+              created_at: vote.created_at,
+              isStarter: !!starterVote && vote.id === starterVote.id,
+            })),
+          }),
+          {
+            headers: {
+              "content-type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            },
+          },
+        );
+      } catch (error) {
+        return new Response(
+          JSON.stringify({ error: "Erro ao buscar detalhes da votação" }),
           {
             status: 500,
             headers: { "content-type": "application/json" },
@@ -1835,7 +2163,7 @@ export default {
         }
 
         if (!inserted) {
-          throw new Error("Falha ao registrar voto anônimo");
+          throw new Error("Falha ao registrar voto");
         }
 
         // Conta quantos votos existem agora
@@ -1896,7 +2224,7 @@ export default {
               superApproved: true,
               superCount,
               completedRoundId: currentRoundId,
-              message: "Super Babaquinha aprovado com 4 votos anônimos!",
+              message: "Super Babaquinha aprovado com 4 votos!",
             }),
             {
               headers: {
