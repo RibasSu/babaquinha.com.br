@@ -403,6 +403,10 @@ function getHtmlTemplate(people, visitorCount = 0) {
         border-style: inset;
       }
 
+      .super-form .super-info-btn {
+        width: 100%;
+      }
+
       .super-tip {
         margin: 6px 0 0 0;
         font-size: 0.85em;
@@ -989,11 +993,23 @@ function getHtmlTemplate(people, visitorCount = 0) {
                   <div class="super-progress" data-person="${person.id}" data-vote-round="${person.pending_super_round_id || ""}">
                     Votos: ${person.pending_super_votes || 0}/4
                   </div>
-                  <div class="super-form">
-                    <input type="text" class="super-justification-input" data-person="${person.id}" placeholder="Digite a justificativa para iniciar os votos" />
-                    <button class="super-vote-btn" data-person="${person.id}">Votar Super</button>
+                  <div class="super-form" data-person="${person.id}">
+                    ${
+                      (person.pending_super_votes || 0) > 0 &&
+                      (person.pending_super_votes || 0) < 4
+                        ? `<button class="super-info-btn" data-person="${person.id}">Ver informações da votação</button>`
+                        : `<input type="text" class="super-justification-input" data-person="${person.id}" placeholder="Digite a justificativa para iniciar os votos" />
+                           <button class="super-vote-btn" data-person="${person.id}">Votar Super</button>`
+                    }
                   </div>
-                  <p class="super-tip">A primeira votação precisa de justificativa. 4 votos liberam 1 ponto especial.</p>
+                  <p class="super-tip" data-person="${person.id}">
+                    ${
+                      (person.pending_super_votes || 0) > 0 &&
+                      (person.pending_super_votes || 0) < 4
+                        ? "Já existe uma votação em andamento. Veja as informações para votar nesta rodada."
+                        : "A primeira votação precisa de justificativa. 4 votos liberam 1 ponto especial."
+                    }
+                  </p>
                 </div>
               </div>
             </div>
@@ -1239,6 +1255,34 @@ function getHtmlTemplate(people, visitorCount = 0) {
         const key = getSuperVoteStorageKey(personId, roundId);
         if (!key) return false;
         return localStorage.getItem(key) === "1";
+      }
+
+      function updateSuperVoteCardState(personId, currentVotes) {
+        const votes = Number.parseInt(currentVotes, 10);
+        const normalizedVotes = Number.isNaN(votes) ? 0 : votes;
+        const hasOngoingVote = normalizedVotes > 0 && normalizedVotes < 4;
+        const superForm = document.querySelector('.super-form[data-person="' + personId + '"]');
+        const superTip = document.querySelector('.super-tip[data-person="' + personId + '"]');
+
+        if (!superForm) return;
+
+        if (hasOngoingVote) {
+          superForm.innerHTML =
+            '<button class="super-info-btn" data-person="' + personId + '">Ver informações da votação</button>';
+          if (superTip) {
+            superTip.textContent =
+              "Já existe uma votação em andamento. Veja as informações para votar nesta rodada.";
+          }
+          return;
+        }
+
+        superForm.innerHTML =
+          '<input type="text" class="super-justification-input" data-person="' + personId + '" placeholder="Digite a justificativa para iniciar os votos" />' +
+          '<button class="super-vote-btn" data-person="' + personId + '">Votar Super</button>';
+        if (superTip) {
+          superTip.textContent =
+            "A primeira votação precisa de justificativa. 4 votos liberam 1 ponto especial.";
+        }
       }
 
       function formatVoteDate(createdAt) {
@@ -1618,6 +1662,7 @@ function getHtmlTemplate(people, visitorCount = 0) {
               progressEl.textContent = "Votos: 0/4";
               delete progressEl.dataset.voteRound;
             }
+            updateSuperVoteCardState(personId, 0);
 
             showAlert("Super Babaquinha aprovado! 🎉", "success");
             const completedRoundId = String(data.completedRoundId || currentRoundId || "").trim();
@@ -1631,6 +1676,7 @@ function getHtmlTemplate(people, visitorCount = 0) {
               progressEl.textContent = "Votos: " + data.currentVotes + "/4";
               progressEl.dataset.voteRound = newRoundId;
             }
+            updateSuperVoteCardState(personId, data.currentVotes);
             showAlert("Voto computado! Faltam " + data.votesNeeded + " votos.", "info");
             const newVoteKey = getSuperVoteStorageKey(personId, newRoundId);
             if (newVoteKey) {
@@ -1754,20 +1800,28 @@ function getHtmlTemplate(people, visitorCount = 0) {
 
 
 
-      // Event listeners para Super Babaquinha
-      document.querySelectorAll(".super-vote-btn").forEach(btn => {
-        btn.addEventListener("click", (e) => {
-          const personId = e.target.dataset.person;
-          handleSuperVote(personId);
-        });
+      // Event listeners para Super Babaquinha (delegação para suportar troca dinâmica do formulário)
+      document.addEventListener("click", (e) => {
+        const voteBtn = e.target.closest(".super-vote-btn");
+        if (voteBtn) {
+          handleSuperVote(voteBtn.dataset.person);
+          return;
+        }
+
+        const infoBtn = e.target.closest(".super-info-btn");
+        if (infoBtn) {
+          openSuperVoteDetails(infoBtn.dataset.person);
+        }
       });
 
-      document.querySelectorAll(".super-justification-input").forEach(input => {
-        input.addEventListener("keypress", (e) => {
-          if (e.key === "Enter") {
-            handleSuperVote(e.target.dataset.person);
-          }
-        });
+      document.addEventListener("keypress", (e) => {
+        if (
+          e.key === "Enter" &&
+          e.target.classList &&
+          e.target.classList.contains("super-justification-input")
+        ) {
+          handleSuperVote(e.target.dataset.person);
+        }
       });
 
       // Upload de fotos
