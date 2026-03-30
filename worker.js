@@ -106,6 +106,7 @@ async function getPeopleList(env) {
       COALESCE(ph.count, 0) as count,
       COALESCE(sp.count, 0) as super_count,
       COALESCE(sv.count, 0) as pending_super_votes,
+      sv.round_id as pending_super_round_id,
       pp.photo_data as photo
     FROM people p
     LEFT JOIN (
@@ -119,7 +120,7 @@ async function getPeopleList(env) {
       GROUP BY person_id
     ) sp ON sp.person_id = p.id
     LEFT JOIN (
-      SELECT person_id, COUNT(*) as count
+      SELECT person_id, COUNT(*) as count, MIN(id) as round_id
       FROM super_votes
       GROUP BY person_id
     ) sv ON sv.person_id = p.id
@@ -918,7 +919,7 @@ function getHtmlTemplate(people, visitorCount = 0) {
                     <span class="super-title">Super Babaquinha ⭐</span>
                     <span class="super-count" data-person="${person.id}" aria-label="Total de supers">${person.super_count || 0}</span>
                   </div>
-                  <div class="super-progress" data-person="${person.id}">
+                  <div class="super-progress" data-person="${person.id}" data-vote-round="${person.pending_super_round_id || ""}">
                     Votos: ${person.pending_super_votes || 0}/4
                   </div>
                   <div class="super-form">
@@ -1120,6 +1121,23 @@ function getHtmlTemplate(people, visitorCount = 0) {
         return Number.isNaN(votes) ? 0 : votes;
       }
 
+      function getCurrentSuperRoundId(progressEl) {
+        if (!progressEl) return "";
+        return String(progressEl.dataset.voteRound || "").trim();
+      }
+
+      function getSuperVoteStorageKey(personId, roundId) {
+        const normalizedRoundId = String(roundId || "").trim();
+        if (!normalizedRoundId) return "";
+        return "super_vote_pending_" + personId + "_" + normalizedRoundId;
+      }
+
+      function hasBrowserVotedInRound(personId, roundId) {
+        const key = getSuperVoteStorageKey(personId, roundId);
+        if (!key) return false;
+        return localStorage.getItem(key) === "1";
+      }
+
       function focusSuperVoteTarget(personId) {
         const card = document.querySelector('[data-person-card="' + personId + '"]');
         const input = document.querySelector('.super-justification-input[data-person="' + personId + '"]');
@@ -1143,12 +1161,14 @@ function getHtmlTemplate(people, visitorCount = 0) {
         document.querySelectorAll('.super-progress[data-person]').forEach((progressEl) => {
           const personId = progressEl.dataset.person;
           const currentVotes = getCurrentSuperVotes(progressEl);
-          const alreadyVoted = localStorage.getItem('super_vote_pending_' + personId) === '1';
+          const roundId = getCurrentSuperRoundId(progressEl);
+          const alreadyVoted = hasBrowserVotedInRound(personId, roundId);
 
           if (currentVotes > 0 && currentVotes < 4) {
             const card = document.querySelector('[data-person-card="' + personId + '"]');
             pending.push({
               personId,
+              roundId,
               currentVotes,
               alreadyVoted,
               personName: card ? card.dataset.personName || 'Pessoa' : 'Pessoa',
@@ -1330,19 +1350,17 @@ function getHtmlTemplate(people, visitorCount = 0) {
 
 
       async function handleSuperVote(personId) {
-        const voteKey = "super_vote_pending_" + personId;
-        const alreadyVoted = localStorage.getItem(voteKey) === "1";
-
-        if (alreadyVoted) {
-          showAlert("Você já votou para este Super Babaquinha. Aguarde os outros votos.", "warning");
-          return;
-        }
-
         const input = document.querySelector('.super-justification-input[data-person="' + personId + '"]');
         const progressEl = document.querySelector('.super-progress[data-person="' + personId + '"]');
         const countEl = document.querySelector('.super-count[data-person="' + personId + '"]');
         const justification = input ? input.value.trim() : "";
         const currentVotes = getCurrentSuperVotes(progressEl);
+        const currentRoundId = getCurrentSuperRoundId(progressEl);
+
+        if (currentVotes > 0 && hasBrowserVotedInRound(personId, currentRoundId)) {
+          showAlert("Você já votou nesta votação deste Super Babaquinha. Aguarde os outros votos.", "warning");
+          return;
+        }
 
         if (currentVotes === 0 && !justification) {
           showAlert("Digite uma justificativa para iniciar os votos do Super Babaquinha.", "warning");
@@ -1375,17 +1393,26 @@ function getHtmlTemplate(people, visitorCount = 0) {
 
             if (progressEl) {
               progressEl.textContent = "Votos: 0/4";
+              delete progressEl.dataset.voteRound;
             }
 
             showAlert("Super Babaquinha aprovado! 🎉", "success");
-            localStorage.removeItem(voteKey);
+            const completedRoundId = String(data.completedRoundId || currentRoundId || "").trim();
+            const completedVoteKey = getSuperVoteStorageKey(personId, completedRoundId);
+            if (completedVoteKey) {
+              localStorage.removeItem(completedVoteKey);
+            }
           } else {
+            const newRoundId = String(data.roundId || currentRoundId || "").trim();
             if (progressEl) {
               progressEl.textContent = "Votos: " + data.currentVotes + "/4";
+              progressEl.dataset.voteRound = newRoundId;
             }
             showAlert("Voto anônimo computado! Faltam " + data.votesNeeded + " votos.", "info");
-            // trava novas tentativas neste navegador até o super ser aprovado
-            localStorage.setItem(voteKey, "1");
+            const newVoteKey = getSuperVoteStorageKey(personId, newRoundId);
+            if (newVoteKey) {
+              localStorage.setItem(newVoteKey, "1");
+            }
           }
 
           if (input) {
@@ -1819,6 +1846,12 @@ export default {
           .first();
 
         const currentVotes = voteCountResult?.count || 0;
+        const roundIdResult = await env.DB.prepare(
+          "SELECT MIN(id) as round_id FROM super_votes WHERE person_id = ?",
+        )
+          .bind(personId)
+          .first();
+        const currentRoundId = roundIdResult?.round_id || null;
 
         if (currentVotes >= 4) {
           // Usa a justificativa da rodada para registrar a aprovação
@@ -1862,6 +1895,7 @@ export default {
             JSON.stringify({
               superApproved: true,
               superCount,
+              completedRoundId: currentRoundId,
               message: "Super Babaquinha aprovado com 4 votos anônimos!",
             }),
             {
@@ -1876,6 +1910,7 @@ export default {
         return new Response(
           JSON.stringify({
             superApproved: false,
+            roundId: currentRoundId,
             currentVotes,
             votesNeeded: Math.max(0, 4 - currentVotes),
           }),
