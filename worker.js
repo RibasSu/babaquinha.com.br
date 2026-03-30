@@ -543,6 +543,62 @@ function getHtmlTemplate(people, visitorCount = 0) {
         color: #ffccff;
       }
 
+      .person-card.vote-target-highlight {
+        animation: voteTargetPulse 1.2s ease-in-out 1;
+      }
+
+      @keyframes voteTargetPulse {
+        0% { box-shadow: 0 0 0 0 rgba(255, 255, 0, 0.8); }
+        100% { box-shadow: 0 0 0 12px rgba(255, 255, 0, 0); }
+      }
+
+      .super-vote-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .super-vote-item {
+        background: #000080;
+        border: 2px inset #c0c0c0;
+        padding: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        color: #ffffff;
+        flex-wrap: wrap;
+      }
+
+      .super-vote-info {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .super-vote-info strong {
+        color: #ffff00;
+      }
+
+      .super-vote-btn-modal {
+        background: #ffff00;
+        border: 2px outset #fff;
+        padding: 5px 10px;
+        cursor: pointer;
+        font-family: 'MS Sans Serif', Arial, sans-serif;
+        font-weight: bold;
+      }
+
+      .super-vote-btn-modal:active {
+        border-style: inset;
+      }
+
+      .super-vote-btn-modal:disabled {
+        cursor: not-allowed;
+        opacity: 0.65;
+      }
+
       .under-construction {
         text-align: center;
         margin-top: 30px;
@@ -835,7 +891,7 @@ function getHtmlTemplate(people, visitorCount = 0) {
         ${people
           .map(
             (person) => `
-          <div class="person-card">
+          <div class="person-card" data-person-card="${person.id}" data-person-name="${person.name}">
             <h2>
               ${person.name}
               <span class="count" data-person="${person.id}" role="status" aria-live="polite">${person.count} pts</span>
@@ -863,13 +919,13 @@ function getHtmlTemplate(people, visitorCount = 0) {
                     <span class="super-count" data-person="${person.id}" aria-label="Total de supers">${person.super_count || 0}</span>
                   </div>
                   <div class="super-progress" data-person="${person.id}">
-                    Votos: ${(person.pending_super_votes || 0)}/4
+                    Votos: ${person.pending_super_votes || 0}/4
                   </div>
                   <div class="super-form">
-                    <input type="text" class="super-voter-input" data-person="${person.id}" placeholder="Digite seu nome para votar" />
+                    <input type="text" class="super-justification-input" data-person="${person.id}" placeholder="Digite a justificativa para iniciar os votos" />
                     <button class="super-vote-btn" data-person="${person.id}">Votar Super</button>
                   </div>
-                  <p class="super-tip">Precisa de 4 votos diferentes para liberar 1 ponto especial.</p>
+                  <p class="super-tip">A primeira votação precisa de justificativa. Todos os votos são anônimos (4 votos liberam 1 ponto especial).</p>
                 </div>
               </div>
             </div>
@@ -896,7 +952,7 @@ function getHtmlTemplate(people, visitorCount = 0) {
       </div>
       
       <div class="guestbook-link">
-        <p>[>>] <a href="mailto:andre@ribassu.com">Contato do Webmaster</a> [<<]</p>
+        <p>[>>] <a href="mailto:admin@babaquinha.com.br">Contato do Webmaster</a> [<<]</p>
       </div>
       
     </main>
@@ -914,6 +970,23 @@ function getHtmlTemplate(people, visitorCount = 0) {
         </div>
         <div class="modal-footer">
           <button id="alertOkBtn">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal de votação pendente do Super Babaquinha -->
+    <div class="modal-overlay" id="superVoteModal">
+      <div class="modal-window" style="max-width: 460px;">
+        <div class="modal-titlebar">
+          <span>[!] Super Babaquinha em votação</span>
+          <button class="modal-close" id="closeSuperVoteModal">X</button>
+        </div>
+        <div class="modal-content">
+          <p>Tem votação do <span class="destaque">Super Babaquinha</span> em andamento. Escolha em quem votar:</p>
+          <div id="superVoteList" class="super-vote-list"></div>
+        </div>
+        <div class="modal-footer">
+          <button id="superVoteLaterBtn">Depois eu voto</button>
         </div>
       </div>
     </div>
@@ -1027,6 +1100,104 @@ function getHtmlTemplate(people, visitorCount = 0) {
       document.getElementById('alertModal').addEventListener('click', (e) => {
         if (e.target.id === 'alertModal') {
           document.getElementById('alertModal').classList.remove('show');
+        }
+      });
+
+      // Modal de votação pendente do Super Babaquinha
+      const superVoteModal = document.getElementById('superVoteModal');
+      const superVoteList = document.getElementById('superVoteList');
+
+      function closeSuperVoteModal() {
+        superVoteModal.classList.remove('show');
+      }
+
+      function getCurrentSuperVotes(progressEl) {
+        if (!progressEl) return 0;
+        const text = (progressEl.textContent || '').trim();
+        const afterColon = text.includes(':') ? text.split(':').slice(1).join(':') : text;
+        const votesText = afterColon.split('/')[0].trim();
+        const votes = parseInt(votesText, 10);
+        return Number.isNaN(votes) ? 0 : votes;
+      }
+
+      function focusSuperVoteTarget(personId) {
+        const card = document.querySelector('[data-person-card="' + personId + '"]');
+        const input = document.querySelector('.super-justification-input[data-person="' + personId + '"]');
+
+        if (card) {
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          card.classList.add('vote-target-highlight');
+          setTimeout(() => card.classList.remove('vote-target-highlight'), 1300);
+        }
+
+        if (input) {
+          input.focus();
+          input.select();
+        }
+      }
+
+      function openSuperVoteModalIfNeeded() {
+        if (!superVoteModal || !superVoteList) return;
+
+        const pending = [];
+        document.querySelectorAll('.super-progress[data-person]').forEach((progressEl) => {
+          const personId = progressEl.dataset.person;
+          const currentVotes = getCurrentSuperVotes(progressEl);
+          const alreadyVoted = localStorage.getItem('super_vote_pending_' + personId) === '1';
+
+          if (currentVotes > 0 && currentVotes < 4) {
+            const card = document.querySelector('[data-person-card="' + personId + '"]');
+            pending.push({
+              personId,
+              currentVotes,
+              alreadyVoted,
+              personName: card ? card.dataset.personName || 'Pessoa' : 'Pessoa',
+            });
+          }
+        });
+
+        if (pending.length === 0) return;
+
+        superVoteList.innerHTML = '';
+        pending.forEach((item) => {
+          const row = document.createElement('div');
+          row.className = 'super-vote-item';
+
+          const info = document.createElement('div');
+          info.className = 'super-vote-info';
+
+          const name = document.createElement('strong');
+          name.textContent = item.personName;
+
+          const progress = document.createElement('span');
+          progress.textContent = 'Votos: ' + item.currentVotes + '/4';
+
+          const actionBtn = document.createElement('button');
+          actionBtn.className = 'super-vote-btn-modal';
+          actionBtn.textContent = item.alreadyVoted ? 'Já votei' : 'Votar';
+          actionBtn.disabled = item.alreadyVoted;
+          if (!item.alreadyVoted) {
+            actionBtn.addEventListener('click', () => {
+              closeSuperVoteModal();
+              focusSuperVoteTarget(item.personId);
+            });
+          }
+
+          info.appendChild(name);
+          info.appendChild(progress);
+          row.appendChild(info);
+          row.appendChild(actionBtn);
+          superVoteList.appendChild(row);
+        });
+
+        superVoteModal.classList.add('show');
+      }
+
+      document.getElementById('closeSuperVoteModal').addEventListener('click', closeSuperVoteModal);
+      document.getElementById('superVoteLaterBtn').addEventListener('click', closeSuperVoteModal);
+      superVoteModal.addEventListener('click', (e) => {
+        if (e.target === superVoteModal) {
+          closeSuperVoteModal();
         }
       });
 
@@ -1167,13 +1338,14 @@ function getHtmlTemplate(people, visitorCount = 0) {
           return;
         }
 
-        const input = document.querySelector('.super-voter-input[data-person="' + personId + '"]');
+        const input = document.querySelector('.super-justification-input[data-person="' + personId + '"]');
         const progressEl = document.querySelector('.super-progress[data-person="' + personId + '"]');
         const countEl = document.querySelector('.super-count[data-person="' + personId + '"]');
-        const name = input ? input.value.trim() : "";
+        const justification = input ? input.value.trim() : "";
+        const currentVotes = getCurrentSuperVotes(progressEl);
 
-        if (!name) {
-          showAlert("Digite seu nome para votar no Super Babaquinha.", "warning");
+        if (currentVotes === 0 && !justification) {
+          showAlert("Digite uma justificativa para iniciar os votos do Super Babaquinha.", "warning");
           return;
         }
 
@@ -1181,7 +1353,7 @@ function getHtmlTemplate(people, visitorCount = 0) {
           const response = await fetch(API_URL + "/person/" + personId + "/super-vote", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ voter: name }),
+            body: JSON.stringify({ justification }),
           });
 
           const data = await response.json();
@@ -1211,7 +1383,7 @@ function getHtmlTemplate(people, visitorCount = 0) {
             if (progressEl) {
               progressEl.textContent = "Votos: " + data.currentVotes + "/4";
             }
-            showAlert("Voto computado! Faltam " + data.votesNeeded + " votos.", "info");
+            showAlert("Voto anônimo computado! Faltam " + data.votesNeeded + " votos.", "info");
             // trava novas tentativas neste navegador até o super ser aprovado
             localStorage.setItem(voteKey, "1");
           }
@@ -1338,7 +1510,7 @@ function getHtmlTemplate(people, visitorCount = 0) {
         });
       });
 
-      document.querySelectorAll(".super-voter-input").forEach(input => {
+      document.querySelectorAll(".super-justification-input").forEach(input => {
         input.addEventListener("keypress", (e) => {
           if (e.key === "Enter") {
             handleSuperVote(e.target.dataset.person);
@@ -1393,6 +1565,9 @@ function getHtmlTemplate(people, visitorCount = 0) {
         .addEventListener("click", () => {
           document.body.classList.toggle("high-contrast");
         });
+
+      // Abre automaticamente ao entrar no site quando há votação pendente de Super
+      openSuperVoteModalIfNeeded();
     </script>
   </body>
 </html>`;
@@ -1552,7 +1727,7 @@ export default {
       }
     }
 
-    // API endpoint para votar no Super Babaquinha
+    // API endpoint para votar anonimamente no Super Babaquinha
     if (
       url.pathname.match(/^\/api\/person\/[^\/]+\/super-vote$/) &&
       request.method === "POST"
@@ -1577,12 +1752,27 @@ export default {
           );
         }
 
-        const { voter } = await request.json();
-        const voterName = (voter || "").trim();
+        let requestBody = {};
+        try {
+          requestBody = await request.json();
+        } catch (e) {
+          requestBody = {};
+        }
+        const justification = (requestBody.justification || "").trim();
 
-        if (!voterName) {
+        const voteCountBeforeResult = await env.DB.prepare(
+          "SELECT COUNT(*) as count FROM super_votes WHERE person_id = ?",
+        )
+          .bind(personId)
+          .first();
+
+        const currentVotesBefore = voteCountBeforeResult?.count || 0;
+
+        if (currentVotesBefore === 0 && !justification) {
           return new Response(
-            JSON.stringify({ error: "Nome do votante é obrigatório" }),
+            JSON.stringify({
+              error: "Justificativa é obrigatória para iniciar os votos.",
+            }),
             {
               status: 400,
               headers: { "content-type": "application/json" },
@@ -1590,41 +1780,35 @@ export default {
           );
         }
 
-        // Normaliza para evitar votos duplicados (case-insensitive, ignora espaços extras)
-        const voterKey = voterName
-          .toLowerCase()
-          .normalize("NFD")
-          .replace(/\p{Diacritic}/gu, "")
-          .replace(/\s+/g, " ")
-          .trim();
+        const storedJustification =
+          currentVotesBefore === 0 ? justification : "";
 
-        try {
-          await env.DB.prepare(
-            `
-            INSERT INTO super_votes (person_id, voter_name, voter_key)
-            VALUES (?, ?, ?)
-          `,
-          )
-            .bind(personId, voterName, voterKey)
-            .run();
-        } catch (err) {
-          // Tratamento de voto duplicado
-          if (
-            err?.message &&
-            err.message.toLowerCase().includes("unique constraint failed")
-          ) {
-            return new Response(
-              JSON.stringify({
-                error: "Você já votou para este Super Babaquinha.",
-                duplicate: true,
-              }),
-              {
-                status: 409,
-                headers: { "content-type": "application/json" },
-              },
-            );
+        let inserted = false;
+        for (let attempt = 0; attempt < 3 && !inserted; attempt++) {
+          const anonymousVoteKey = "anon-" + crypto.randomUUID();
+          try {
+            await env.DB.prepare(
+              `
+              INSERT INTO super_votes (person_id, voter_name, voter_key)
+              VALUES (?, ?, ?)
+            `,
+            )
+              .bind(personId, storedJustification, anonymousVoteKey)
+              .run();
+            inserted = true;
+          } catch (err) {
+            if (
+              err?.message &&
+              err.message.toLowerCase().includes("unique constraint failed")
+            ) {
+              continue;
+            }
+            throw err;
           }
-          throw err;
+        }
+
+        if (!inserted) {
+          throw new Error("Falha ao registrar voto anônimo");
         }
 
         // Conta quantos votos existem agora
@@ -1637,16 +1821,21 @@ export default {
         const currentVotes = voteCountResult?.count || 0;
 
         if (currentVotes >= 4) {
-          // Coleta os nomes dos votantes para registrar na aprovação
-          const votersResult = await env.DB.prepare(
-            `SELECT voter_name FROM super_votes WHERE person_id = ? ORDER BY created_at`,
+          // Usa a justificativa da rodada para registrar a aprovação
+          const justificationResult = await env.DB.prepare(
+            `
+            SELECT voter_name
+            FROM super_votes
+            WHERE person_id = ? AND TRIM(voter_name) <> ''
+            ORDER BY created_at
+            LIMIT 1
+          `,
           )
             .bind(personId)
-            .all();
-
-          const approvedBy = (votersResult?.results || [])
-            .map((v) => v.voter_name)
-            .join(", ");
+            .first();
+          const approvedBy =
+            (justificationResult?.voter_name || "").trim() ||
+            "Super Babaquinha aprovado!";
 
           // Registra ponto especial
           await env.DB.prepare(
@@ -1656,9 +1845,7 @@ export default {
             .run();
 
           // Limpa a fila de votos para começar de novo
-          await env.DB.prepare(
-            `DELETE FROM super_votes WHERE person_id = ?`,
-          )
+          await env.DB.prepare(`DELETE FROM super_votes WHERE person_id = ?`)
             .bind(personId)
             .run();
 
@@ -1675,7 +1862,7 @@ export default {
             JSON.stringify({
               superApproved: true,
               superCount,
-              message: "Super Babaquinha aprovado com 4 votos!",
+              message: "Super Babaquinha aprovado com 4 votos anônimos!",
             }),
             {
               headers: {
@@ -1738,13 +1925,10 @@ export default {
         const photoData = (photo || "").trim();
 
         if (!photoData || !photoData.startsWith("data:image")) {
-          return new Response(
-            JSON.stringify({ error: "Foto inválida" }),
-            {
-              status: 400,
-              headers: { "content-type": "application/json" },
-            },
-          );
+          return new Response(JSON.stringify({ error: "Foto inválida" }), {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          });
         }
 
         // Limite de ~1.5MB para evitar abusos (tamanho do data URL)
@@ -1777,13 +1961,10 @@ export default {
           },
         });
       } catch (error) {
-        return new Response(
-          JSON.stringify({ error: "Erro ao salvar foto" }),
-          {
-            status: 500,
-            headers: { "content-type": "application/json" },
-          },
-        );
+        return new Response(JSON.stringify({ error: "Erro ao salvar foto" }), {
+          status: 500,
+          headers: { "content-type": "application/json" },
+        });
       }
     }
 
